@@ -26,7 +26,6 @@ linters:
     - gofmt
     - goimports
     - golint
-    - gomnd
     - goprintffuncname
     - gosec
     - gosimple
@@ -60,16 +59,12 @@ linters-settings:
   gocyclo:
     min-complexity: 15
 
-  gomnd:
-    settings:
-      mnd:
-        checks: argument,case,condition,return
-
   lll:
     line-length: 120
 
   govet:
-    check-shadowing: true
+    enable:
+      - shadow
 
   revive:
     rules:
@@ -83,7 +78,6 @@ issues:
     - path: _test\.go
       linters:
         - funlen
-        - gomnd
         - lll
         - gocyclo
     - path: internal/mock
