@@ -1,0 +1,95 @@
+# k8s-telegram-bot Configuration
+# Copy this file to ~/.config/k8s-telegram-bot.yaml or ~/.k8s-telegram-bot.yaml
+# Or set values via environment variables (prefix: K8SBOT_)
+
+telegram:
+  # Bot token from @BotFather (required)
+  # Can also be set via TELEGRAM_BOT_TOKEN env var
+  bot_token: ""
+
+  # Comma-separated list of allowed user IDs (empty = allow all)
+  # Can also be set via ALLOWED_USER_IDS env var
+  allowed_user_ids: []
+
+  # Comma-separated list of admin user IDs (for admin commands)
+  # Can also be set via ADMIN_USER_IDS env var
+  admin_user_ids: []
+
+  # Message parse mode: MarkdownV2, HTML, or empty for plain text
+  parse_mode: "MarkdownV2"
+
+  # Webhook configuration (optional, for webhook mode)
+  webhook_url: ""
+  webhook_port: 8443
+
+kubernetes:
+  # Path to kubeconfig file (default: ~/.kube/config)
+  # Can also be set via KUBECONFIG env var
+  kubeconfig_path: ""
+
+  # Default namespace for commands
+  default_namespace: "default"
+
+  # Specific context to use (empty = use current context from kubeconfig)
+  context: ""
+
+  # Request timeout in seconds
+  timeout: 30
+
+  # Dry run mode - don't make actual API calls
+  dry_run: false
+
+  # Impersonation settings
+  impersonate_user: ""
+  impersonate_groups: []
+
+  # Client rate limiting
+  burst: 10
+  qps: 5.0
+
+logging:
+  # Log level: debug, info, warn, error
+  level: "info"
+
+  # Log format: json, console
+  format: "json"
+
+  # Log output: stdout, stderr
+  output: "stdout"
+
+bot:
+  # Maximum message length (Telegram limit is 4096)
+  max_message_length: 4096
+
+  # Command prefix
+  command_prefix: "/"
+
+  # Enable Markdown formatting
+  enable_markdown: true
+
+  # Rate limit per user per minute
+  rate_limit: 30
+
+  # Menu system
+  enable_menu_button: true
+  enable_reply_keyboard: true
+  menu_page_size: 10
+
+  # Allowed commands (empty = all)
+  allowed_commands:
+    - "start"
+    - "help"
+    - "version"
+    - "get"
+    - "describe"
+    - "logs"
+    - "exec"
+    - "portforward"
+    - "contexts"
+    - "use-context"
+    - "config"
+    - "top"
+    - "events"
+    - "watch"
+    - "restart"
+    - "scale"
