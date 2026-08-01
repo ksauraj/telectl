@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +13,59 @@ import (
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
+
+// TelegramMarkdownV2Escape escapes a string for Telegram MarkdownV2.
+// Per https://core.telegram.org/bots/api#markdownv2-style these chars must be
+// backslash-escaped: _ * [ ] ( ) ~ ` > # + - = | { } . !
+func EscapeMDV2(s string) string {
+	special := []string{"_", "*", "[", "]", "(", ")", "~", "`", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"}
+	out := s
+	for _, c := range special {
+		out = strings.ReplaceAll(out, c, "\\"+c)
+	}
+	return out
+}
+
+// EscapeMD escapes only the minimal Markdown chars (old Markdown style).
+func EscapeMD(s string) string {
+	r := strings.NewReplacer("_", "\\_", "*", "\\*", "[", "\\[", "]", "\\]", "`", "\\`")
+	return r.Replace(s)
+}
+
+// EscapeHTML escapes HTML special chars (for HTML parse mode).
+func EscapeHTML(s string) string {
+	s = strings.ReplaceAll(s, "&", "\u0026amp;")
+	s = strings.ReplaceAll(s, "<", "\u0026lt;")
+	s = strings.ReplaceAll(s, ">", "\u0026gt;")
+	s = strings.ReplaceAll(s, "\"", "\u0026quot;")
+	s = strings.ReplaceAll(s, "'", "\u0026#39;")
+	return s
+}
+
+// StatusEmoji returns an emoji representing a Kubernetes resource status.
+func StatusEmoji(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "running":
+		return "🟢"
+	case "succeeded", "completed":
+		return "⚫"
+	case "pending":
+		return "🟡"
+	case "failed":
+		return "🔴"
+	case "crashloopbackoff":
+		return "🔴"
+	case "terminating":
+		return "🟠"
+	case "error":
+		return "🔴"
+	case "unknown":
+		return "❓"
+	case "":
+		return "•"
+	}
+	return "•"
+}
 
 // FormatResource formats a single resource for display
 func FormatResource(resource *k8s.ResourceInfo, format string) string {
@@ -87,10 +141,12 @@ func formatYAML(resource *k8s.ResourceInfo) string {
 	return string(data)
 }
 
-// FormatResourceList formats a list of resources as a table
+// FormatResourceList formats a list of resources as a table.
+// Default format returns a MarkdownV2 code block with an aligned,
+// resource-aware table (the pretty k9s-style output the user wants).
 func FormatResourceList(resources []k8s.ResourceInfo, format string, wide bool) string {
 	if len(resources) == 0 {
-		return "No resources found"
+		return "📭 No resources found"
 	}
 
 	switch format {
@@ -100,109 +156,597 @@ func FormatResourceList(resources []k8s.ResourceInfo, format string, wide bool) 
 		return formatResourceListYAML(resources)
 	case "name":
 		return formatResourceListNames(resources)
+	case "wide":
+		wide = true
+		fallthrough
 	default:
 		return formatResourceListTable(resources, wide)
 	}
 }
 
+// formatResourceListTable renders resources as a MarkdownV2 code-block table
+// with resource-specific columns and status emojis.
 func formatResourceListTable(resources []k8s.ResourceInfo, wide bool) string {
 	if len(resources) == 0 {
-		return "No resources found"
+		return "📭 No resources found"
 	}
 
-	// Determine columns based on resource type
 	kind := resources[0].Kind
-	columns := getColumnsForKind(kind, wide)
+	if kind == "" {
+		kind = "Resource"
+	}
+	cols := columnsForKind(kind, wide)
 
-	// Calculate column widths
-	widths := make(map[string]int)
-	for _, col := range columns {
-		widths[col] = len(col)
+	// Build rows with display values (pre-escaping).
+	headers := make([]string, len(cols))
+	for i, c := range cols {
+		headers[i] = c.Header
+	}
+	rows := make([][]string, 0, len(resources))
+	for _, r := range resources {
+		rows = append(rows, rowForKind(cols, &r, kind))
 	}
 
-	rows := make([]map[string]string, len(resources))
-	for i, r := range resources {
-		row := make(map[string]string)
-		row["NAME"] = r.Name
-		row["NAMESPACE"] = r.Namespace
-		row["STATUS"] = r.Status
-		row["AGE"] = formatAge(r.CreatedAt.Time)
-
-		if wide {
-			row["LABELS"] = formatLabels(r.Labels)
-			if kind == "Pod" {
-				if spec, ok := r.Details["spec"].(map[string]interface{}); ok {
-					if node, ok := spec["nodeName"].(string); ok {
-						row["NODE"] = node
-					}
-				}
-				if status, ok := r.Details["status"].(map[string]interface{}); ok {
-					if ip, ok := status["podIP"].(string); ok {
-						row["IP"] = ip
-					}
-				}
+	// Compute column widths.
+	widths := make([]int, len(cols))
+	for i, h := range headers {
+		widths[i] = displayWidth(h)
+	}
+	for _, row := range rows {
+		for i, cell := range row {
+			if w := displayWidth(cell); w > widths[i] {
+				widths[i] = w
 			}
 		}
-
-		rows[i] = row
-		for _, col := range columns {
-			if len(row[col]) > widths[col] {
-				widths[col] = len(row[col])
-			}
+	}
+	// Cap very wide NAME columns so the table fits in Telegram.
+	maxNameWidth := 42
+	for i, c := range cols {
+		if c.Header == "NAME" && widths[i] > maxNameWidth {
+			widths[i] = maxNameWidth
 		}
 	}
 
 	var sb strings.Builder
+	// Title line (MarkdownV2 — but this goes inside a code block so no escaping).
+	sb.WriteString(fmt.Sprintf("%s %d item(s)\n", kind, len(resources)))
 
-	// Header
-	for i, col := range columns {
-		if i > 0 {
-			sb.WriteString("  ")
-		}
-		sb.WriteString(padRight(col, widths[col]))
+	// Header row
+	sb.WriteString(padRight(headers[0], widths[0]))
+	for j := 1; j < len(headers); j++ {
+		sb.WriteString("  ")
+		sb.WriteString(padRight(headers[j], widths[j]))
 	}
 	sb.WriteString("\n")
 
-	// Separator
-	for i, col := range columns {
-		if i > 0 {
-			sb.WriteString("  ")
-		}
-		sb.WriteString(strings.Repeat("-", widths[col]))
+	// Separator row
+	sb.WriteString(strings.Repeat("─", widths[0]))
+	for j := 1; j < len(headers); j++ {
+		sb.WriteString("  ")
+		sb.WriteString(strings.Repeat("─", widths[j]))
 	}
 	sb.WriteString("\n")
 
-	// Rows
+	// Data rows
 	for _, row := range rows {
-		for i, col := range columns {
-			if i > 0 {
-				sb.WriteString("  ")
-			}
-			sb.WriteString(padRight(row[col], widths[col]))
+		// Truncate NAME cell if too wide.
+		if len(row[0]) > maxNameWidth && widths[0] == maxNameWidth {
+			row[0] = row[0][:maxNameWidth-1] + "…"
+		}
+		sb.WriteString(padRight(row[0], widths[0]))
+		for j := 1; j < len(row); j++ {
+			sb.WriteString("  ")
+			sb.WriteString(padRight(row[j], widths[j]))
 		}
 		sb.WriteString("\n")
 	}
 
-	return sb.String()
+	// Wrap in a MarkdownV2 code block. Inside ``` no escaping is needed,
+	// which is why we kept the raw text above.
+	return "```\n" + sb.String() + "```"
 }
 
-func getColumnsForKind(kind string, wide bool) []string {
-	base := []string{"NAME", "NAMESPACE", "STATUS", "AGE"}
-	if wide {
-		switch kind {
-		case "Pod":
-			return append(base, "NODE", "IP", "LABELS")
-		case "Deployment":
-			return append(base, "READY", "UP-TO-DATE", "AVAILABLE", "LABELS")
-		case "Service":
-			return append(base, "TYPE", "CLUSTER-IP", "EXTERNAL-IP", "PORT(S)", "LABELS")
-		case "Node":
-			return append(base, "VERSION", "OS", "LABELS")
-		default:
-			return append(base, "LABELS")
+// tableColumn describes a single table column.
+type tableColumn struct {
+	Header string
+	Render func(r *k8s.ResourceInfo) string
+}
+
+// columnsForKind returns the column set for a given resource kind.
+func columnsForKind(kind string, wide bool) []tableColumn {
+	switch kind {
+	case "Pod":
+		base := []tableColumn{
+			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
+			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
+			{"READY", func(r *k8s.ResourceInfo) string { return podReady(r) }},
+			{"STATUS", func(r *k8s.ResourceInfo) string { return StatusEmoji(r.Status) + " " + emptyToDash(r.Status) }},
+			{"RESTARTS", func(r *k8s.ResourceInfo) string { return strconv.Itoa(podRestarts(r)) }},
+			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
+		}
+		if wide {
+			base = append(base,
+				tableColumn{"NODE", func(r *k8s.ResourceInfo) string { return podNode(r) }},
+				tableColumn{"IP", func(r *k8s.ResourceInfo) string { return podIP(r) }},
+			)
+		}
+		return base
+	case "Deployment":
+		base := []tableColumn{
+			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
+			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
+			{"READY", func(r *k8s.ResourceInfo) string { return deployReady(r) }},
+			{"UP-TO-DATE", func(r *k8s.ResourceInfo) string { return deployUpToDate(r) }},
+			{"AVAILABLE", func(r *k8s.ResourceInfo) string { return deployAvailable(r) }},
+			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
+		}
+		return base
+	case "Service":
+		return []tableColumn{
+			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
+			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
+			{"TYPE", func(r *k8s.ResourceInfo) string { return svcType(r) }},
+			{"CLUSTER-IP", func(r *k8s.ResourceInfo) string { return svcClusterIP(r) }},
+			{"EXTERNAL-IP", func(r *k8s.ResourceInfo) string { return svcExternalIP(r) }},
+			{"PORT(S)", func(r *k8s.ResourceInfo) string { return svcPorts(r) }},
+			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
+		}
+	case "ReplicaSet":
+		return []tableColumn{
+			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
+			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
+			{"DESIRED", func(r *k8s.ResourceInfo) string { return rsIntField(r, "replicas") }},
+			{"CURRENT", func(r *k8s.ResourceInfo) string { return rsIntField(r, "availableReplicas") }},
+			{"READY", func(r *k8s.ResourceInfo) string { return rsIntField(r, "readyReplicas") }},
+			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
+		}
+	case "Namespace":
+		return []tableColumn{
+			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
+			{"STATUS", func(r *k8s.ResourceInfo) string { return StatusEmoji(r.Status) + " " + emptyToDash(r.Status) }},
+			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
+		}
+	case "Node":
+		return []tableColumn{
+			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
+			{"STATUS", func(r *k8s.ResourceInfo) string { return StatusEmoji(r.Status) + " " + emptyToDash(r.Status) }},
+			{"VERSION", func(r *k8s.ResourceInfo) string { return nodeVersion(r) }},
+			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
+		}
+	case "ConfigMap":
+		return []tableColumn{
+			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
+			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
+			{"DATA", func(r *k8s.ResourceInfo) string { return cmDataCount(r) }},
+			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
+		}
+	case "Secret":
+		return []tableColumn{
+			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
+			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
+			{"TYPE", func(r *k8s.ResourceInfo) string { return secretType(r) }},
+			{"DATA", func(r *k8s.ResourceInfo) string { return cmDataCount(r) }},
+			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
+		}
+	case "PersistentVolumeClaim":
+		return []tableColumn{
+			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
+			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
+			{"STATUS", func(r *k8s.ResourceInfo) string { return StatusEmoji(r.Status) + " " + emptyToDash(r.Status) }},
+			{"CAPACITY", func(r *k8s.ResourceInfo) string { return pvcCapacity(r) }},
+			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
+		}
+	case "Ingress":
+		return []tableColumn{
+			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
+			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
+			{"HOSTS", func(r *k8s.ResourceInfo) string { return ingressHosts(r) }},
+			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
+		}
+	case "Event":
+		return []tableColumn{
+			{"TYPE", func(r *k8s.ResourceInfo) string { return eventTypeEmoji(r) + " " + eventType(r) }},
+			{"REASON", func(r *k8s.ResourceInfo) string { return eventReason(r) }},
+			{"OBJECT", func(r *k8s.ResourceInfo) string { return eventObject(r) }},
+			{"MESSAGE", func(r *k8s.ResourceInfo) string { return TruncateString(eventMessage(r), 60) }},
 		}
 	}
-	return base
+
+	// Default generic columns.
+	return []tableColumn{
+		{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
+		{"NAMESPACE", func(r *k8s.ResourceInfo) string { return emptyToDash(r.Namespace) }},
+		{"STATUS", func(r *k8s.ResourceInfo) string { return StatusEmoji(r.Status) + " " + emptyToDash(r.Status) }},
+		{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
+	}
+}
+
+// rowForKind renders a row for the given column set.
+func rowForKind(cols []tableColumn, r *k8s.ResourceInfo, kind string) []string {
+	out := make([]string, len(cols))
+	for i, c := range cols {
+		out[i] = c.Render(r)
+	}
+	return out
+}
+
+// displayWidth returns the number of visible columns of s, treating a UTF-8
+// rune (including emoji and CJK) as width 2. This is a conservative estimate
+// that works well enough for fixed-width code blocks in Telegram.
+func displayWidth(s string) int {
+	w := 0
+	for _, r := range s {
+		switch {
+		case r >= 0x1F300 && r <= 0x1FAFF: // emoji symbols
+			w += 2
+		case r >= 0x1100 && r <= 0x115F: // Hangul Jamo
+			w += 2
+		case r >= 0x2E80 && r <= 0xA4CF: // CJK radicals
+			w += 2
+		case r >= 0xAC00 && r <= 0xD7A3: // Hangul syllables
+			w += 2
+		case r >= 0xF900 && r <= 0xFAFF: // CJK compat ideographs
+			w += 2
+		case r >= 0xFE30 && r <= 0xFE4F: // CJK compat forms
+			w += 2
+		case r >= 0xFF00 && r <= 0xFF60: // fullwidth forms
+			w += 2
+		case r >= 0xFFE0 && r <= 0xFFE6: // fullwidth signs
+			w += 2
+		default:
+			w += 1
+		}
+	}
+	return w
+}
+
+// padRight pads s with spaces to reach width columns (respects displayWidth).
+func padRight(s string, width int) string {
+	cur := displayWidth(s)
+	if cur >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-cur)
+}
+
+// ---- Helpers to dig into Details (unstructured maps) ----
+
+func getMap(m map[string]interface{}, key string) map[string]interface{} {
+	if m == nil {
+		return nil
+	}
+	v, _ := m[key].(map[string]interface{})
+	return v
+}
+
+func getString(m map[string]interface{}, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func getInt64(m map[string]interface{}, key string) int64 {
+	if v, ok := m[key].(int64); ok {
+		return v
+	}
+	if f, ok := m[key].(float64); ok {
+		return int64(f)
+	}
+	return 0
+}
+
+// ---- Pod helpers ----
+
+func podReady(r *k8s.ResourceInfo) string {
+	status := getMap(r.Details, "status")
+	if status == nil {
+		return "0/0"
+	}
+	containers, _ := status["containerStatuses"].([]interface{})
+	total := len(containers)
+	if total == 0 {
+		// fall back to spec.containers
+		spec := getMap(r.Details, "spec")
+		if cs, ok := spec["containers"].([]interface{}); ok {
+			total = len(cs)
+		}
+	}
+	ready := 0
+	for _, c := range containers {
+		if cs, ok := c.(map[string]interface{}); ok {
+			if readyBool(cs["ready"]) {
+				ready++
+			}
+		}
+	}
+	return fmt.Sprintf("%d/%d", ready, total)
+}
+
+func readyBool(v interface{}) bool {
+	if b, ok := v.(bool); ok {
+		return b
+	}
+	return false
+}
+
+func podRestarts(r *k8s.ResourceInfo) int {
+	status := getMap(r.Details, "status")
+	if status == nil {
+		return 0
+	}
+	containers, _ := status["containerStatuses"].([]interface{})
+	restarts := 0
+	for _, c := range containers {
+		if cs, ok := c.(map[string]interface{}); ok {
+			restarts += int(getInt64(cs, "restartCount"))
+		}
+	}
+	return restarts
+}
+
+func podNode(r *k8s.ResourceInfo) string {
+	spec := getMap(r.Details, "spec")
+	if spec == nil {
+		return "<none>"
+	}
+	if n := getString(spec, "nodeName"); n != "" {
+		return n
+	}
+	return "<none>"
+}
+
+func podIP(r *k8s.ResourceInfo) string {
+	status := getMap(r.Details, "status")
+	if status == nil {
+		return "<none>"
+	}
+	if ip := getString(status, "podIP"); ip != "" {
+		return ip
+	}
+	return "<none>"
+}
+
+// ---- Deployment helpers ----
+
+func deployReady(r *k8s.ResourceInfo) string {
+	spec := getMap(r.Details, "spec")
+	status := getMap(r.Details, "status")
+	desired := getInt64(spec, "replicas")
+	ready := getInt64(status, "readyReplicas")
+	return fmt.Sprintf("%d/%d", ready, desired)
+}
+
+func deployUpToDate(r *k8s.ResourceInfo) string {
+	status := getMap(r.Details, "status")
+	return strconv.FormatInt(getInt64(status, "updatedReplicas"), 10)
+}
+
+func deployAvailable(r *k8s.ResourceInfo) string {
+	status := getMap(r.Details, "status")
+	return strconv.FormatInt(getInt64(status, "availableReplicas"), 10)
+}
+
+// ---- Service helpers ----
+
+func svcType(r *k8s.ResourceInfo) string {
+	spec := getMap(r.Details, "spec")
+	return emptyToDash(getString(spec, "type"))
+}
+
+func svcClusterIP(r *k8s.ResourceInfo) string {
+	spec := getMap(r.Details, "spec")
+	if ip := getString(spec, "clusterIP"); ip != "" {
+		return ip
+	}
+	return "<none>"
+}
+
+func svcExternalIP(r *k8s.ResourceInfo) string {
+	spec := getMap(r.Details, "spec")
+	if ips, ok := spec["externalIPs"].([]interface{}); ok && len(ips) > 0 {
+		var out []string
+		for _, ip := range ips {
+			if s, ok := ip.(string); ok {
+				out = append(out, s)
+			}
+		}
+		if len(out) > 0 {
+			return strings.Join(out, ",")
+		}
+	}
+	if lb := getMap(statusSvc(r), "loadBalancer"); lb != nil {
+		if ing, ok := lb["ingress"].([]interface{}); ok && len(ing) > 0 {
+			if first, ok := ing[0].(map[string]interface{}); ok {
+				if ip := getString(first, "ip"); ip != "" {
+					return ip
+				}
+				if h := getString(first, "hostname"); h != "" {
+					return h
+				}
+			}
+		}
+	}
+	return "<none>"
+}
+
+func statusSvc(r *k8s.ResourceInfo) map[string]interface{} {
+	return getMap(r.Details, "status")
+}
+
+func svcPorts(r *k8s.ResourceInfo) string {
+	spec := getMap(r.Details, "spec")
+	ports, _ := spec["ports"].([]interface{})
+	if len(ports) == 0 {
+		return "<none>"
+	}
+	var out []string
+	for _, p := range ports {
+		if pm, ok := p.(map[string]interface{}); ok {
+			port := getInt64(pm, "port")
+			proto := getString(pm, "protocol")
+			if proto == "" {
+				proto = "TCP"
+			}
+			name := getString(pm, "name")
+			np := ""
+			if t := getInt64(pm, "nodePort"); t > 0 {
+				np = fmt.Sprintf(":%d", t)
+			}
+			if name != "" {
+				out = append(out, fmt.Sprintf("%d/%s%s(%s)", port, proto, np, name))
+			} else if np != "" {
+				out = append(out, fmt.Sprintf("%d/%s%s", port, proto, np))
+			} else {
+				out = append(out, fmt.Sprintf("%d/%s", port, proto))
+			}
+		}
+	}
+	return strings.Join(out, ",")
+}
+
+// ---- ReplicaSet helpers ----
+
+func rsIntField(r *k8s.ResourceInfo, field string) string {
+	src := getMap(r.Details, "status")
+	if src == nil {
+		src = getMap(r.Details, "spec")
+	}
+	return strconv.FormatInt(getInt64(src, field), 10)
+}
+
+// ---- Node helpers ----
+
+func nodeVersion(r *k8s.ResourceInfo) string {
+	status := getMap(r.Details, "status")
+	info := getMap(status, "nodeInfo")
+	return emptyToDash(getString(info, "kubeletVersion"))
+}
+
+// ---- ConfigMap / Secret helpers ----
+
+func cmDataCount(r *k8s.ResourceInfo) string {
+	if data, ok := r.Details["data"].(map[string]interface{}); ok {
+		return strconv.Itoa(len(data))
+	}
+	if binData, ok := r.Details["binaryData"].(map[string]interface{}); ok {
+		return strconv.Itoa(len(binData))
+	}
+	return "0"
+}
+
+func secretType(r *k8s.ResourceInfo) string {
+	if t := getString(r.Details, "type"); t != "" {
+		return t
+	}
+	return "<none>"
+}
+
+// ---- PVC helpers ----
+
+func pvcCapacity(r *k8s.ResourceInfo) string {
+	spec := getMap(r.Details, "spec")
+	resources := getMap(spec, "resources")
+	requests := getMap(resources, "requests")
+	storage := getMap(requests, "storage")
+	if storage != nil {
+		// Usually {"storage": "10Gi"} but client-go may return a map
+		if q, ok := storage["storage"].(string); ok {
+			return q
+		}
+	}
+	// Fall back to status.capacity
+	status := getMap(r.Details, "status")
+	cap := getMap(status, "capacity")
+	if cap != nil {
+		if q, ok := cap["storage"].(string); ok {
+			return q
+		}
+	}
+	return "<none>"
+}
+
+// ---- Ingress helpers ----
+
+func ingressHosts(r *k8s.ResourceInfo) string {
+	spec := getMap(r.Details, "spec")
+	rules, _ := spec["rules"].([]interface{})
+	if len(rules) == 0 {
+		// try TLS hosts
+		tls, _ := spec["tls"].([]interface{})
+		if len(tls) > 0 {
+			if first, ok := tls[0].(map[string]interface{}); ok {
+				hosts, _ := first["hosts"].([]interface{})
+				var out []string
+				for _, h := range hosts {
+					if s, ok := h.(string); ok {
+						out = append(out, s)
+					}
+				}
+				if len(out) > 0 {
+					return strings.Join(out, ",")
+				}
+			}
+		}
+		return "*"
+	}
+	var out []string
+	for _, rule := range rules {
+		if rm, ok := rule.(map[string]interface{}); ok {
+			if h := getString(rm, "host"); h != "" {
+				out = append(out, h)
+			}
+		}
+	}
+	if len(out) == 0 {
+		return "*"
+	}
+	return strings.Join(out, ",")
+}
+
+// ---- Event helpers ----
+
+func eventType(r *k8s.ResourceInfo) string {
+	return emptyToDash(getString(r.Details, "type"))
+}
+
+func eventTypeEmoji(r *k8s.ResourceInfo) string {
+	t := getString(r.Details, "type")
+	if t == "Warning" {
+		return "🟠"
+	}
+	return "🟢"
+}
+
+func eventReason(r *k8s.ResourceInfo) string {
+	return emptyToDash(getString(r.Details, "reason"))
+}
+
+func eventObject(r *k8s.ResourceInfo) string {
+	inv := getMap(r.Details, "involvedObject")
+	if inv == nil {
+		return "<none>"
+	}
+	kind := getString(inv, "kind")
+	name := getString(inv, "name")
+	ns := getString(inv, "namespace")
+	if ns != "" {
+		return fmt.Sprintf("%s/%s/%s", ns, kind, name)
+	}
+	return fmt.Sprintf("%s/%s", kind, name)
+}
+
+func eventMessage(r *k8s.ResourceInfo) string {
+	return emptyToDash(getString(r.Details, "message"))
+}
+
+// ---- Generic helpers ----
+
+func emptyToDash(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "<none>"
+	}
+	return s
 }
 
 func formatAge(t time.Time) string {
@@ -231,13 +775,6 @@ func formatLabels(labels map[string]string) string {
 	}
 	sort.Strings(parts)
 	return strings.Join(parts, ",")
-}
-
-func padRight(s string, width int) string {
-	if len(s) >= width {
-		return s
-	}
-	return s + strings.Repeat(" ", width-len(s))
 }
 
 func formatResourceListJSON(resources []k8s.ResourceInfo) string {
