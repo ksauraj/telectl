@@ -60,27 +60,38 @@ type BotConfig struct {
 var cfg *Config
 
 func InitConfig(configFile string) error {
-	viper.SetConfigName("k8s-telegram-bot")
-	viper.SetConfigType("yaml")
-
+	// Step 1: If a config file is provided, use it. Otherwise search
+	// well-defined paths. We deliberately do NOT add the home directory
+	// as a config search path because users keep unrelated YAML files
+	// there (most notably ~/.kube/config) and viper will happily try to
+	// parse those as the bot config, producing confusing errors like
+	// "yaml: control characters are not allowed" when the kubeconfig
+	// contains binary cert data.
 	if configFile != "" {
 		viper.SetConfigFile(configFile)
 	} else {
+		viper.SetConfigName("k8s-telegram-bot")
+		viper.SetConfigType("yaml")
 		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get home dir: %w", err)
+		if err == nil {
+			viper.AddConfigPath(".")
+			viper.AddConfigPath(filepath.Join(home, ".config", "k8s-telegram-bot"))
+			viper.AddConfigPath(filepath.Join(home, ".config"))
+			viper.AddConfigPath("/etc/k8s-telegram-bot")
+		} else {
+			viper.AddConfigPath(".")
 		}
-		viper.AddConfigPath(".")
-		viper.AddConfigPath(filepath.Join(home, ".config"))
-		viper.AddConfigPath(home)
 	}
 
-	// Environment variable bindings
+	// Step 2: Prevent AddConfigPath(home) from ever finding ~/.kube/config.
+	// Even though AddConfigPath is scoped above, defensively clear any
+	// stale search paths if InitConfig is called more than once.
 	viper.SetEnvPrefix("K8SBOT")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
-	// Bind specific env vars
+	// Bind specific env vars. These are env-only bindings and do NOT
+	// cause viper to read any file.
 	_ = viper.BindEnv("telegram.bot_token", "TELEGRAM_BOT_TOKEN")
 	_ = viper.BindEnv("kubernetes.kubeconfig_path", "KUBECONFIG")
 	_ = viper.BindEnv("telegram.allowed_user_ids", "ALLOWED_USER_IDS")
@@ -88,11 +99,28 @@ func InitConfig(configFile string) error {
 
 	setDefaults()
 
+	// Step 3: Read the config file (if any). A missing config file is OK;
+	// we'll fall back to defaults + env vars. Any OTHER read error (including
+	// an accidental kubeconfig parse) is reported with the file path so the
+	// user can identify what was read.
 	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return fmt.Errorf("failed to read config: %w", err)
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			// Config file not found is OK, we'll use defaults + env vars
+		} else {
+			usedFile := viper.ConfigFileUsed()
+			// detect the most common misconfiguration: viper accidentally
+			// picked up a kubeconfig file as the bot config.
+			if usedFile != "" {
+				if fi, statErr := os.Stat(usedFile); statErr == nil && fi.Size() > 0 {
+					// kubeconfig files commonly reference apiVersion: v1
+					raw, readErr := os.ReadFile(usedFile)
+					if readErr == nil && (strings.Contains(string(raw), "apiVersion: v1") || strings.Contains(string(raw), "certificate-authority-data")) && !strings.Contains(string(raw), "telegram") {
+						return fmt.Errorf("refusing to use %q as bot config: it looks like a kubeconfig file. Move/remove it or pass --config /path/to/k8s-telegram-bot.yaml explicitly", usedFile)
+					}
+				}
+			}
+			return fmt.Errorf("failed to read config %q: %w", usedFile, err)
 		}
-		// Config file not found is OK, we'll use defaults + env vars
 	}
 
 	cfg = &Config{}
