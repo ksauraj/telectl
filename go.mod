@@ -13,7 +13,6 @@ require (
 	k8s.io/api v0.30.5
 	sigs.k8s.io/yaml v1.4.0
 	gopkg.in/yaml.v3 v3.0.1
-	golang.org/x/net v0.27.0
 )
 
 require (
