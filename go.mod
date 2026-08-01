@@ -18,10 +18,9 @@ require (
 	golang.org/x/text v0.14.0
 	golang.org/x/sys v0.17.0
 	golang.org/x/protobuf v1.6.1
-	golang/protobuf v1.6.1
+	golang.org/x/crypto v0.20.0
+	golang.org/x/oauth2 v0.16.0
 )
-
-replace github.com/golang/groupcache => github.com/golang/groupcache v0.0.0-20231212151809-02826c3a78b2
 
 require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
