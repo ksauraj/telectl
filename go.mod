@@ -13,9 +13,8 @@ require (
 	k8s.io/api v0.30.5
 	sigs.k8s.io/yaml v1.4.0
 	gopkg.in/yaml.v3 v3.0.1
+	golang.org/x/net v0.27.0
 )
-
-replace github.com/golang/groupcache => github.com/golang/groupcache v0.0.0-20210331224755-02826c3a78b2
 
 require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
