@@ -7,19 +7,18 @@ import (
 	"strings"
 
 	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/k8s-telegram-bot/internal/bot"
-	"github.com/ksauraj/k8s-telegram-bot/internal/k8s"
+	"github.com/ksauraj/telectl/internal/types"
 )
 
 type RestartHandler struct {
 	*BaseHandler
 }
 
-func NewRestartHandler(b *bot.Bot) *RestartHandler {
+func NewRestartHandler(b types.BotInterface) *RestartHandler {
 	return &RestartHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *RestartHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *bot.UserSession) error {
+func (h *RestartHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
 	if len(args) < 2 {
 		h.sendResponse(msg.Chat.ID, "Usage: /restart deployment <name> [-n namespace]")
 		return nil
@@ -27,7 +26,7 @@ func (h *RestartHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args
 
 	resource := strings.ToLower(args[0])
 	name := args[1]
-	namespace := h.getNamespace(session, args[2:], h.bot.config.Kubernetes.DefaultNamespace)
+	namespace := h.getNamespace(session, args[2:], h.getConfig().Kubernetes.DefaultNamespace)
 
 	if resource != "deployment" && resource != "deploy" {
 		h.sendResponse(msg.Chat.ID, "Only deployments can be restarted")
@@ -36,7 +35,7 @@ func (h *RestartHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args
 
 	client := h.getK8sClient()
 
-	if h.bot.config.Kubernetes.DryRun {
+	if h.getConfig().Kubernetes.DryRun {
 		h.sendResponse(msg.Chat.ID, fmt.Sprintf("🔄 [DRY RUN] Would restart deployment %s/%s", namespace, name))
 		return nil
 	}
@@ -51,18 +50,18 @@ func (h *RestartHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args
 }
 
 func (h *RestartHandler) sendResponse(chatID int64, text string) {
-	h.bot.sendLongMessage(chatID, text)
+	h.bot.SendLongMessage(chatID, text)
 }
 
 type ScaleHandler struct {
 	*BaseHandler
 }
 
-func NewScaleHandler(b *bot.Bot) *ScaleHandler {
+func NewScaleHandler(b types.BotInterface) *ScaleHandler {
 	return &ScaleHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *ScaleHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *bot.UserSession) error {
+func (h *ScaleHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
 	if len(args) < 3 {
 		h.sendResponse(msg.Chat.ID, "Usage: /scale deployment <name> <replicas> [-n namespace]")
 		return nil
@@ -71,7 +70,7 @@ func (h *ScaleHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args [
 	resource := strings.ToLower(args[0])
 	name := args[1]
 	replicasStr := args[2]
-	namespace := h.getNamespace(session, args[3:], h.bot.config.Kubernetes.DefaultNamespace)
+	namespace := h.getNamespace(session, args[3:], h.getConfig().Kubernetes.DefaultNamespace)
 
 	if resource != "deployment" && resource != "deploy" {
 		h.sendResponse(msg.Chat.ID, "Only deployments can be scaled")
@@ -91,7 +90,7 @@ func (h *ScaleHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args [
 
 	client := h.getK8sClient()
 
-	if h.bot.config.Kubernetes.DryRun {
+	if h.getConfig().Kubernetes.DryRun {
 		h.sendResponse(msg.Chat.ID, fmt.Sprintf("📈 [DRY RUN] Would scale deployment %s/%s to %d replicas", namespace, name, replicas))
 		return nil
 	}
@@ -106,5 +105,5 @@ func (h *ScaleHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args [
 }
 
 func (h *ScaleHandler) sendResponse(chatID int64, text string) {
-	h.bot.sendLongMessage(chatID, text)
+	h.bot.SendLongMessage(chatID, text)
 }

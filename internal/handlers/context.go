@@ -7,20 +7,21 @@ import (
 	"strings"
 
 	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/k8s-telegram-bot/internal/bot"
-	"github.com/ksauraj/k8s-telegram-bot/internal/k8s"
-	"github.com/ksauraj/k8s-telegram-bot/internal/utils/formatters"
+	"github.com/ksauraj/telectl/internal/config"
+	"github.com/ksauraj/telectl/internal/menus"
+	"github.com/ksauraj/telectl/internal/types"
+	"github.com/ksauraj/telectl/internal/utils/formatters"
 )
 
 type ContextsHandler struct {
 	*BaseHandler
 }
 
-func NewContextsHandler(b *bot.Bot) *ContextsHandler {
+func NewContextsHandler(b types.BotInterface) *ContextsHandler {
 	return &ContextsHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *ContextsHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *bot.UserSession) error {
+func (h *ContextsHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
 	client := h.getK8sClient()
 	kubeconfig := client.GetKubeconfig()
 
@@ -35,10 +36,10 @@ func (h *ContextsHandler) Handle(ctx context.Context, msg *tgbotapi.Message, arg
 		return nil
 	}
 
-	// Use the new menu system's keyboard
-	keyboard := h.bot.menuBuilder.GetContextsInlineKeyboard(contexts)
+	mb, _ := h.bot.MenuBuilder().(*menus.MenuBuilder)
+	keyboard := mb.GetContextsInlineKeyboard(contexts)
 	output := formatters.FormatContexts(contexts)
-	h.bot.sendKeyboard(msg.Chat.ID, output, keyboard)
+	h.bot.SendKeyboard(msg.Chat.ID, output, keyboard)
 	return nil
 }
 
@@ -46,11 +47,11 @@ type UseContextHandler struct {
 	*BaseHandler
 }
 
-func NewUseContextHandler(b *bot.Bot) *UseContextHandler {
+func NewUseContextHandler(b types.BotInterface) *UseContextHandler {
 	return &UseContextHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *UseContextHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *bot.UserSession) error {
+func (h *UseContextHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
 	if len(args) == 0 {
 		h.sendResponse(msg.Chat.ID, "Usage: /use-context <context-name>")
 		return nil
@@ -64,9 +65,7 @@ func (h *UseContextHandler) Handle(ctx context.Context, msg *tgbotapi.Message, a
 		return fmt.Errorf("failed to switch context: %w", err)
 	}
 
-	session.mu.Lock()
 	session.CurrentCtx = contextName
-	session.mu.Unlock()
 
 	h.sendResponse(msg.Chat.ID, fmt.Sprintf("✅ Switched to context: %s", contextName))
 	return nil
@@ -76,11 +75,11 @@ type ConfigHandler struct {
 	*BaseHandler
 }
 
-func NewConfigHandler(b *bot.Bot) *ConfigHandler {
+func NewConfigHandler(b types.BotInterface) *ConfigHandler {
 	return &ConfigHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *ConfigHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *bot.UserSession) error {
+func (h *ConfigHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
 	client := h.getK8sClient()
 	kc := client.GetKubeconfig()
 
@@ -89,11 +88,20 @@ func (h *ConfigHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args 
 		currentCtx = current.Name
 	}
 
-	session.mu.RLock()
-	currentNS := session.CurrentNS
-	session.mu.RUnlock()
+	currentNS := session.GetNamespace()
+	cfg, _ := h.bot.Config().(*config.Config)
+	api, _ := h.bot.API().(*tgbotapi.BotAPI)
 
-	config := fmt.Sprintf(`⚙️ *Bot Configuration*
+	botUsername := "telectl"
+	if api != nil {
+		botUsername = api.Self.UserName
+	}
+	parseMode := "Markdown"
+	if cfg.Telegram.ParseMode != "" {
+		parseMode = cfg.Telegram.ParseMode
+	}
+
+	out := fmt.Sprintf(`⚙️ *Bot Configuration*
 
 *Kubernetes:*
 • Kubeconfig: %s
@@ -111,22 +119,22 @@ func (h *ConfigHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args 
 *Bot Settings:*
 • Max Message Length: %d
 • Command Prefix: %s
-• Markdown Enabled: %v`, 
-		h.bot.config.Kubernetes.KubeconfigPath,
+• Markdown Enabled: %v`,
+		cfg.Kubernetes.KubeconfigPath,
 		currentCtx,
 		len(kc.Contexts),
-		h.bot.config.Kubernetes.DefaultNamespace,
+		cfg.Kubernetes.DefaultNamespace,
 		currentNS,
-		h.bot.config.Kubernetes.DryRun,
-		h.bot.api.Self.UserName,
-		h.bot.config.Telegram.ParseMode,
-		h.bot.config.Bot.RateLimit,
-		h.bot.config.Bot.MaxMessageLength,
-		h.bot.config.Bot.CommandPrefix,
-		h.bot.config.Bot.EnableMarkdown,
+		cfg.Kubernetes.DryRun,
+		botUsername,
+		parseMode,
+		cfg.Bot.RateLimit,
+		cfg.Bot.MaxMessageLength,
+		cfg.Bot.CommandPrefix,
+		cfg.Bot.EnableMarkdown,
 	)
 
-	h.bot.sendMarkdown(msg.Chat.ID, config)
+	h.bot.SendMarkdown(msg.Chat.ID, out)
 	return nil
 }
 
@@ -134,11 +142,11 @@ type PortForwardHandler struct {
 	*BaseHandler
 }
 
-func NewPortForwardHandler(b *bot.Bot) *PortForwardHandler {
+func NewPortForwardHandler(b types.BotInterface) *PortForwardHandler {
 	return &PortForwardHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *PortForwardHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *bot.UserSession) error {
+func (h *PortForwardHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
 	if len(args) < 2 {
 		h.sendResponse(msg.Chat.ID, "Usage: /portforward <pod> <local:remote> [-n namespace]")
 		return nil
@@ -146,7 +154,12 @@ func (h *PortForwardHandler) Handle(ctx context.Context, msg *tgbotapi.Message, 
 
 	podName := args[0]
 	portSpec := args[1]
-	namespace := h.getNamespace(session, args[2:], h.bot.config.Kubernetes.DefaultNamespace)
+	cfg, _ := h.bot.Config().(*config.Config)
+	defaultNS := ""
+	if cfg != nil {
+		defaultNS = cfg.Kubernetes.DefaultNamespace
+	}
+	namespace := h.getNamespace(session, args[2:], defaultNS)
 
 	// Parse port spec (local:remote)
 	parts := strings.Split(portSpec, ":")
@@ -169,20 +182,4 @@ func (h *PortForwardHandler) Handle(ctx context.Context, msg *tgbotapi.Message, 
 
 	h.sendResponse(msg.Chat.ID, fmt.Sprintf("🔌 Port forwarding %s/%s %d -> %d\n(Not fully implemented - would start background port-forward)", namespace, podName, localPort, remotePort))
 	return nil
-}
-
-func (h *ContextsHandler) sendResponse(chatID int64, text string) {
-	h.bot.sendLongMessage(chatID, text)
-}
-
-func (h *UseContextHandler) sendResponse(chatID int64, text string) {
-	h.bot.sendLongMessage(chatID, text)
-}
-
-func (h *ConfigHandler) sendResponse(chatID int64, text string) {
-	h.bot.sendLongMessage(chatID, text)
-}
-
-func (h *PortForwardHandler) sendResponse(chatID int64, text string) {
-	h.bot.sendLongMessage(chatID, text)
 }

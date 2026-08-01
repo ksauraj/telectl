@@ -8,9 +8,8 @@ import (
 	"sync"
 
 	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/k8s-telegram-bot/internal/bot"
-	"github.com/ksauraj/k8s-telegram-bot/internal/k8s"
-	"go.uber.org/zap"
+	"github.com/ksauraj/telectl/internal/types"
+	"github.com/ksauraj/telectl/internal/k8s"
 )
 
 type ExecHandler struct {
@@ -32,21 +31,21 @@ type ExecSession struct {
 	Active     bool
 }
 
-func NewExecHandler(b *bot.Bot) *ExecHandler {
+func NewExecHandler(b types.BotInterface) *ExecHandler {
 	return &ExecHandler{
 		BaseHandler: NewBaseHandler(b),
 		sessions:    make(map[int64]*ExecSession),
 	}
 }
 
-func (h *ExecHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *bot.UserSession) error {
+func (h *ExecHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
 	if len(args) == 0 {
 		h.sendResponse(msg.Chat.ID, "Usage: /exec <pod> [-n namespace] [-c container] [command...]")
 		return nil
 	}
 
 	podName := args[0]
-	namespace := h.getNamespace(session, args[1:], h.bot.config.Kubernetes.DefaultNamespace)
+	namespace := h.getNamespace(session, args[1:], h.getConfig().Kubernetes.DefaultNamespace)
 
 	// Parse flags
 	container := ""
@@ -108,7 +107,7 @@ func (h *ExecHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []
 	return h.executeCommand(ctx, msg, client, podName, namespace, container, command)
 }
 
-func (h *ExecHandler) startInteractiveSession(ctx context.Context, msg *tgbotapi.Message, session *bot.UserSession, podName, namespace, container string) error {
+func (h *ExecHandler) startInteractiveSession(ctx context.Context, msg *tgbotapi.Message, session *types.UserSession, podName, namespace, container string) error {
 	chatID := msg.Chat.ID
 
 	// Check if user already has an active session
@@ -142,7 +141,7 @@ func (h *ExecHandler) startInteractiveSession(ctx context.Context, msg *tgbotapi
 	h.mu.Unlock()
 
 	// Set user session to exec mode
-	session.setExecMode(podName, namespace, container)
+	session.SetExecMode(podName, namespace, container)
 
 	// Send welcome message with keyboard
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
@@ -151,11 +150,11 @@ func (h *ExecHandler) startInteractiveSession(ctx context.Context, msg *tgbotapi
 		),
 	)
 
-	h.bot.sendKeyboard(chatID, fmt.Sprintf("🖥️ *Interactive session started*\nPod: %s/%s\nContainer: %s\nType commands below. Use /exit to quit.", namespace, podName, container), keyboard)
+	h.bot.SendKeyboard(chatID, fmt.Sprintf("🖥️ *Interactive session started*\nPod: %s/%s\nContainer: %s\nType commands below. Use /exit to quit.", namespace, podName, container), keyboard)
 
 	// Start exec in background
 	go func() {
-		err := h.bot.k8sClient.ExecInPod(execCtx, k8s.ExecOptions{
+		err := h.getK8sClient().ExecInPod(execCtx, k8s.ExecOptions{
 			Namespace: namespace,
 			PodName:   podName,
 			Container: container,
@@ -170,12 +169,12 @@ func (h *ExecHandler) startInteractiveSession(ctx context.Context, msg *tgbotapi
 		delete(h.sessions, chatID)
 		h.mu.Unlock()
 
-		session.clearExecMode()
+		session.ClearExecMode()
 
 		if err != nil && execCtx.Err() == nil {
-			h.bot.sendMessage(chatID, fmt.Sprintf("❌ Exec session ended with error: %s", err))
+			h.bot.SendMessage(chatID, fmt.Sprintf("❌ Exec session ended with error: %s", err))
 		} else {
-			h.bot.sendMessage(chatID, "👋 Exec session ended")
+			h.bot.SendMessage(chatID, "👋 Exec session ended")
 		}
 	}()
 
@@ -221,7 +220,7 @@ func (h *ExecHandler) executeCommand(ctx context.Context, msg *tgbotapi.Message,
 	return nil
 }
 
-func (h *ExecHandler) HandleExecInput(ctx context.Context, msg *tgbotapi.Message, session *bot.UserSession) {
+func (h *ExecHandler) HandleExecInput(ctx context.Context, msg *tgbotapi.Message, session *types.UserSession) {
 	chatID := msg.Chat.ID
 
 	h.mu.Lock()
@@ -248,5 +247,5 @@ func (h *ExecHandler) HandleExecInput(ctx context.Context, msg *tgbotapi.Message
 }
 
 func (h *ExecHandler) sendResponse(chatID int64, text string) {
-	h.bot.sendLongMessage(chatID, text)
+	h.bot.SendLongMessage(chatID, text)
 }

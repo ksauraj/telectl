@@ -21,7 +21,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/ksauraj/k8s-telegram-bot/cmd/k8sbot/cmd"
+	"github.com/ksauraj/telectl/cmd/k8sbot/cmd"
 	"go.uber.org/zap"
 )
 

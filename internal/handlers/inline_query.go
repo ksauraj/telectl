@@ -6,9 +6,8 @@ import (
 	"strings"
 
 	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/k8s-telegram-bot/internal/bot"
-	"github.com/ksauraj/k8s-telegram-bot/internal/k8s"
-	"github.com/ksauraj/k8s-telegram-bot/internal/utils/formatters"
+	"github.com/ksauraj/telectl/internal/types"
+	"github.com/ksauraj/telectl/internal/utils/formatters"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -16,7 +15,7 @@ type InlineQueryHandler struct {
 	*BaseHandler
 }
 
-func NewInlineQueryHandler(b *bot.Bot) *InlineQueryHandler {
+func NewInlineQueryHandler(b types.BotInterface) *InlineQueryHandler {
 	return &InlineQueryHandler{BaseHandler: NewBaseHandler(b)}
 }
 
@@ -124,7 +123,7 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 		// Get specific resource
 		resource, err := client.GetResource(ctx, gvr, namespace, name)
 		if err != nil {
-			return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResult{
+			return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResultArticle{
 				{
 					Type:        "article",
 					ID:          "error",
@@ -139,7 +138,7 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 		}
 
 		text := formatters.FormatResource(resource, "wide")
-		return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResult{
+		return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResultArticle{
 			{
 				Type:        "article",
 				ID:          "resource-" + name,
@@ -156,7 +155,7 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 	// List resources
 	resources, err := client.ListResources(ctx, gvr, namespace, labelSelector, "")
 	if err != nil {
-		return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResult{
+		return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResultArticle{
 			{
 				Type:        "article",
 				ID:          "error",
@@ -171,7 +170,7 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 	}
 
 	if len(resources) == 0 {
-		return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResult{
+		return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResultArticle{
 			{
 				Type:        "article",
 				ID:          "empty",
@@ -186,7 +185,7 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 	}
 
 	// Build results (max 50 for inline query)
-	results := make([]tgbotapi.InlineQueryResult, 0, min(len(resources), 50))
+	results := make([]tgbotapi.InlineQueryResultArticle, 0, min(len(resources), 50))
 	for _, r := range resources {
 		if len(results) >= 50 {
 			break
@@ -218,7 +217,7 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 
 		text := formatters.FormatResource(&r, "wide")
 
-		results = append(results, tgbotapi.InlineQueryResult{
+		results = append(results, tgbotapi.InlineQueryResultArticle{
 			Type:        "article",
 			ID:          "resource-" + r.Name,
 			Title:       fmt.Sprintf("%s %s", statusIcon, displayName),
@@ -254,7 +253,7 @@ func (h *InlineQueryHandler) showInlineHelp(inlineQuery *tgbotapi.InlineQuery) e
 @bot services -l app=nginx
 @bot nodes`
 
-	return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResult{
+	return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResultArticle{
 		{
 			Type:        "article",
 			ID:          "help",
@@ -268,12 +267,19 @@ func (h *InlineQueryHandler) showInlineHelp(inlineQuery *tgbotapi.InlineQuery) e
 	})
 }
 
-func (h *InlineQueryHandler) answerInlineQuery(inlineQuery *tgbotapi.InlineQuery, results []tgbotapi.InlineQueryResult) error {
-	answer := tgbotapi.InlineQueryResultArray(results...)
-	answer.QueryID = inlineQuery.ID
-	answer.CacheTime = 60
-	answer.IsPersonal = true
-	return h.bot.api.AnswerInlineQuery(answer)
+func (h *InlineQueryHandler) answerInlineQuery(inlineQuery *tgbotapi.InlineQuery, results []tgbotapi.InlineQueryResultArticle) error {
+	iface := make([]interface{}, len(results))
+	for i, r := range results {
+		iface[i] = r
+	}
+	answer := tgbotapi.InlineConfig{
+		InlineQueryID: inlineQuery.ID,
+		Results:      iface,
+		CacheTime:    60,
+		IsPersonal:   true,
+	}
+	_, err := h.getAPI().Request(answer)
+	return err
 }
 
 func min(a, b int) int {

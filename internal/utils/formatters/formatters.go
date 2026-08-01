@@ -1,14 +1,14 @@
 package formatters
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/ksauraj/k8s-telegram-bot/internal/k8s"
+	"github.com/ksauraj/telectl/internal/k8s"
+	"github.com/ksauraj/telectl/pkg/kubeconfig"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -131,11 +131,15 @@ func formatResourceListTable(resources []k8s.ResourceInfo, wide bool) string {
 		if wide {
 			row["LABELS"] = formatLabels(r.Labels)
 			if kind == "Pod" {
-				if node, ok := r.Details["spec"].(map[string]interface{})["nodeName"].(string); ok {
-					row["NODE"] = node
+				if spec, ok := r.Details["spec"].(map[string]interface{}); ok {
+					if node, ok := spec["nodeName"].(string); ok {
+						row["NODE"] = node
+					}
 				}
-				if ip, ok := r.Details["status"].(map[string]interface{})["podIP"].(string); ok {
-					row["IP"] = ip
+				if status, ok := r.Details["status"].(map[string]interface{}); ok {
+					if ip, ok := status["podIP"].(string); ok {
+						row["IP"] = ip
+					}
 				}
 			}
 		}
@@ -273,6 +277,17 @@ func formatResourceListNames(resources []k8s.ResourceInfo) string {
 	return strings.Join(names, "\n")
 }
 
+// TruncateString truncates a string to maxLen, adding "..." if truncated.
+func TruncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
+}
+
 // FormatPodLogs formats pod logs for display
 func FormatPodLogs(logs string, maxLines int) string {
 	lines := strings.Split(strings.TrimSpace(logs), "\n")
@@ -299,7 +314,7 @@ func FormatExecOutput(stdout, stderr string) string {
 }
 
 // FormatContexts formats kubeconfig contexts for display
-func FormatContexts(contexts []k8s.ContextInfo) string {
+func FormatContexts(contexts []kubeconfig.ContextInfo) string {
 	if len(contexts) == 0 {
 		return "No contexts found"
 	}

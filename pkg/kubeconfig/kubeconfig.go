@@ -23,6 +23,7 @@ type ContextInfo struct {
 
 // AuthInfo represents authentication information for a user
 type AuthInfo struct {
+	Name           string `json:"name,omitempty" yaml:"name,omitempty"`
 	Username        string `json:"username,omitempty" yaml:"username,omitempty"`
 	Password        string `json:"password,omitempty" yaml:"password,omitempty"`
 	Token           string `json:"token,omitempty" yaml:"token,omitempty"`
@@ -110,13 +111,13 @@ func ParseKubeconfig(configPath string) (*KubeConfig, error) {
 				Token:          authInfo.Token,
 				ClientCert:     authInfo.ClientCertificate,
 				ClientKey:      authInfo.ClientKey,
-				ClientCertData: authInfo.ClientCertificateData,
-				ClientKeyData:  authInfo.ClientKeyData,
+				ClientCertData: string(authInfo.ClientCertificateData),
+				ClientKeyData:  string(authInfo.ClientKeyData),
 			}
 			if authInfo.Exec != nil {
 				ci.AuthInfo.ExecCommand = authInfo.Exec.Command
 				ci.AuthInfo.ExecArgs = authInfo.Exec.Args
-				ci.AuthInfo.ExecEnv = authInfo.Exec.Env
+				ci.AuthInfo.ExecEnv = execEnvToStrings(authInfo.Exec.Env)
 			}
 		}
 
@@ -129,26 +130,26 @@ func ParseKubeconfig(configPath string) (*KubeConfig, error) {
 			Name:                      name,
 			Server:                    cluster.Server,
 			CertificateAuthority:      cluster.CertificateAuthority,
-			CertificateAuthorityData:  cluster.CertificateAuthorityData,
+			CertificateAuthorityData:  string(cluster.CertificateAuthorityData),
 			InsecureSkipTLSVerify:     cluster.InsecureSkipTLSVerify,
 		})
 	}
 
 	// Parse users
-	for name, user := range rawConfig.AuthInfos {
+	for _, user := range rawConfig.AuthInfos {
 		authInfo := AuthInfo{
 			Username:       user.Username,
 			Password:       user.Password,
 			Token:          user.Token,
 			ClientCert:     user.ClientCertificate,
 			ClientKey:      user.ClientKey,
-			ClientCertData: user.ClientCertificateData,
-			ClientKeyData:  user.ClientKeyData,
+			ClientCertData: string(user.ClientCertificateData),
+			ClientKeyData:  string(user.ClientKeyData),
 		}
 		if user.Exec != nil {
 			authInfo.ExecCommand = user.Exec.Command
 			authInfo.ExecArgs = user.Exec.Args
-			authInfo.ExecEnv = user.Exec.Env
+			authInfo.ExecEnv = execEnvToStrings(user.Exec.Env)
 		}
 		kubeConfig.Users = append(kubeConfig.Users, authInfo)
 	}
@@ -330,6 +331,14 @@ func expandPath(path string) string {
 		return filepath.Join(home, path[2:])
 	}
 	return path
+}
+
+func execEnvToStrings(env []clientcmdapi.ExecEnvVar) []string {
+	result := make([]string, len(env))
+	for i, v := range env {
+		result[i] = v.Name + "=" + v.Value
+	}
+	return result
 }
 
 // ToYAML returns the kubeconfig as YAML string

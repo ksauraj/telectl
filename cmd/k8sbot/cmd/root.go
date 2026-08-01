@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ksauraj/k8s-telegram-bot/internal/bot"
-	"github.com/ksauraj/k8s-telegram-bot/internal/config"
+	"github.com/ksauraj/telectl/internal/bot"
+	"github.com/ksauraj/telectl/internal/config"
+	"github.com/ksauraj/telectl/internal/k8s"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
@@ -153,7 +154,7 @@ func listContexts(ctx context.Context) error {
 	}
 
 	logger, _ := newLogger("info")
-	k8sClient, err := bot.NewK8sClient(cfg.Kubernetes, logger)
+	k8sClient, err := k8s.NewClient(cfg.Kubernetes.KubeconfigPath, cfg.Kubernetes.Context, cfg.Kubernetes.DryRun, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create k8s client: %w", err)
 	}

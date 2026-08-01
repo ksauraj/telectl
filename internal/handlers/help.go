@@ -4,18 +4,18 @@ import (
 	"context"
 
 	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/k8s-telegram-bot/internal/bot"
+	"github.com/ksauraj/telectl/internal/types"
 )
 
 type HelpHandler struct {
 	*BaseHandler
 }
 
-func NewHelpHandler(b *bot.Bot) *HelpHandler {
+func NewHelpHandler(b types.BotInterface) *HelpHandler {
 	return &HelpHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *HelpHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *bot.UserSession) error {
+func (h *HelpHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
 	help := `📚 *k8s-telegram-bot Command Reference*
 
 *Resource Commands:*
@@ -99,6 +99,6 @@ func (h *HelpHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []
   /exec my-pod -- /bin/bash
   /scale deployment frontend 5 -n prod`
 
-	h.bot.sendMarkdown(msg.Chat.ID, help)
+	h.bot.SendMarkdown(msg.Chat.ID, help)
 	return nil
 }

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ksauraj/k8s-telegram-bot/internal/k8s"
+	"github.com/ksauraj/telectl/internal/k8s"
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -48,8 +48,8 @@ func TestFormatResource(t *testing.T) {
 
 	// Test JSON format
 	output = FormatResource(resource, "json")
-	assert.Contains(t, output, "\"name\":\"test-pod\"")
-	assert.Contains(t, output, "\"namespace\":\"default\"")
+	assert.Contains(t, output, "\"name\": \"test-pod\"")
+	assert.Contains(t, output, "\"namespace\": \"default\"")
 }
 
 func TestFormatResourceList(t *testing.T) {
@@ -166,7 +166,7 @@ func TestSanitizeMarkdown(t *testing.T) {
 func TestTruncateString(t *testing.T) {
 	longString := "This is a very long string that should be truncated"
 	output := TruncateString(longString, 20)
-	assert.Equal(t, "This is a very long...", output)
+	assert.Equal(t, "This is a very lo...", output)
 
 	// Test short string
 	shortString := "Short"
@@ -215,7 +215,7 @@ func formatAgeForTest(t time.Time) string {
 	return "30s"
 }
 
-func formatLabels(labels map[string]string) string {
+func formatLabelsForTest(labels map[string]string) string {
 	if len(labels) == 0 {
 		return "<none>"
 	}

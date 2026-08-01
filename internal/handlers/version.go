@@ -5,18 +5,18 @@ import (
 	"fmt"
 
 	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/k8s-telegram-bot/internal/bot"
+	"github.com/ksauraj/telectl/internal/types"
 )
 
 type VersionHandler struct {
 	*BaseHandler
 }
 
-func NewVersionHandler(b *bot.Bot) *VersionHandler {
+func NewVersionHandler(b types.BotInterface) *VersionHandler {
 	return &VersionHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *VersionHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *bot.UserSession) error {
+func (h *VersionHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
 	version, err := h.getK8sClient().GetServerVersion(ctx)
 	if err != nil {
 		version = "unknown"
@@ -32,8 +32,8 @@ func (h *VersionHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args
 *Configuration:*
 • Kubeconfig: %s
 • Default Namespace: %s
-• Dry Run: %v`, version, h.bot.config.Kubernetes.KubeconfigPath, h.bot.config.Kubernetes.DefaultNamespace, h.bot.config.Kubernetes.DryRun)
+• Dry Run: %v`, version, h.getConfig().Kubernetes.KubeconfigPath, h.getConfig().Kubernetes.DefaultNamespace, h.getConfig().Kubernetes.DryRun)
 
-	h.bot.sendMarkdown(msg.Chat.ID, info)
+	h.bot.SendMarkdown(msg.Chat.ID, info)
 	return nil
 }

@@ -5,14 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
-	"github.com/ksauraj/k8s-telegram-bot/pkg/kubeconfig"
+	"github.com/ksauraj/telectl/pkg/kubeconfig"
 	authv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
-	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -69,6 +66,8 @@ type PortForwardOptions struct {
 	Addresses  []string
 	StopChan   chan struct{}
 	ReadyChan  chan struct{}
+	Stdout     io.Writer
+	Stderr     io.Writer
 }
 
 type ResourceInfo struct {
@@ -348,7 +347,8 @@ func (c *Client) ScaleDeployment(ctx context.Context, namespace, name string, re
 		return fmt.Errorf("failed to get deployment scale: %w", err)
 	}
 
-	scale.Spec.Replicas = &replicas
+	replicasCopy := replicas
+	scale.Spec.Replicas = replicasCopy
 	_, err = c.clientset.AppsV1().Deployments(namespace).UpdateScale(ctx, name, scale, metav1.UpdateOptions{})
 	return err
 }
@@ -495,7 +495,7 @@ func (c *Client) GetServerVersion(ctx context.Context) (string, error) {
 	return version.String(), nil
 }
 
-func (c *Client) GetAPIResources(ctx context.Context) ([]metav1.APIResourceList, error) {
+func (c *Client) GetAPIResources(ctx context.Context) ([]*metav1.APIResourceList, error) {
 	return c.clientset.Discovery().ServerPreferredResources()
 }
 

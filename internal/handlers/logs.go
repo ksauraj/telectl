@@ -9,28 +9,27 @@ import (
 	"time"
 
 	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/k8s-telegram-bot/internal/bot"
-	"github.com/ksauraj/k8s-telegram-bot/internal/k8s"
-	"github.com/ksauraj/k8s-telegram-bot/internal/utils/formatters"
-	"go.uber.org/zap"
+	"github.com/ksauraj/telectl/internal/types"
+	"github.com/ksauraj/telectl/internal/k8s"
+	"github.com/ksauraj/telectl/internal/utils/formatters"
 )
 
 type LogsHandler struct {
 	*BaseHandler
 }
 
-func NewLogsHandler(b *bot.Bot) *LogsHandler {
+func NewLogsHandler(b types.BotInterface) *LogsHandler {
 	return &LogsHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *LogsHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *bot.UserSession) error {
+func (h *LogsHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
 	if len(args) == 0 {
 		h.sendResponse(msg.Chat.ID, "Usage: /logs <pod> [-n namespace] [-c container] [-f] [-p] [--tail N] [--since TIME]")
 		return nil
 	}
 
 	podName := args[0]
-	namespace := h.getNamespace(session, args[1:], h.bot.config.Kubernetes.DefaultNamespace)
+	namespace := h.getNamespace(session, args[1:], h.getConfig().Kubernetes.DefaultNamespace)
 
 	// Parse flags
 	opts := k8s.PodLogOptions{
@@ -132,10 +131,10 @@ func (h *LogsHandler) streamLogs(ctx context.Context, chatID int64, client *k8s.
 	}
 
 	formatted := formatters.FormatPodLogs(string(logs), 200)
-	h.bot.sendMessage(chatID, fmt.Sprintf("📋 Logs for %s/%s (last 200 lines):\n```\n%s\n```", opts.Namespace, opts.PodName, formatted))
+	h.bot.SendMessage(chatID, fmt.Sprintf("📋 Logs for %s/%s (last 200 lines):\n```\n%s\n```", opts.Namespace, opts.PodName, formatted))
 	return nil
 }
 
 func (h *LogsHandler) sendResponse(chatID int64, text string) {
-	h.bot.sendLongMessage(chatID, text)
+	h.bot.SendLongMessage(chatID, text)
 }

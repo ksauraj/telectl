@@ -2,8 +2,9 @@ package menus
 
 import (
 	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/k8s-telegram-bot/internal/config"
-	"github.com/ksauraj/k8s-telegram-bot/internal/k8s"
+	"github.com/ksauraj/telectl/internal/config"
+	"github.com/ksauraj/telectl/internal/k8s"
+	"github.com/ksauraj/telectl/pkg/kubeconfig"
 )
 
 // MenuBuilder builds various Telegram keyboards for the bot
@@ -333,7 +334,7 @@ func (mb *MenuBuilder) GetResourceActionInlineKeyboard(resourceType, namespace, 
 }
 
 // GetContextsInlineKeyboard returns inline keyboard for context management
-func (mb *MenuBuilder) GetContextsInlineKeyboard(contexts []k8s.ContextInfo) tgbotapi.InlineKeyboardMarkup {
+func (mb *MenuBuilder) GetContextsInlineKeyboard(contexts []kubeconfig.ContextInfo) tgbotapi.InlineKeyboardMarkup {
 	var rows [][]tgbotapi.InlineKeyboardButton
 
 	for _, ctx := range contexts {
@@ -501,23 +502,33 @@ func ParseCallbackData(data string) *CallbackAction {
 
 	switch parts[1] {
 	case "resource":
-		if len(parts) >= 4 {
+		if len(parts) >= 3 {
 			action.Action = parts[2] // view, page, list, refresh, filter, types
+		}
+		if len(parts) >= 4 {
 			action.ResourceType = parts[3]
 		}
 		if len(parts) >= 5 {
 			action.Namespace = parts[4]
 		}
 		if len(parts) >= 6 {
-			action.Name = parts[5]
+			// For "page" action, the trailing field is the page number (Extra).
+			// For "view" action, it's the resource name.
+			if action.Action == "page" {
+				action.Extra = parts[5]
+			} else {
+				action.Name = parts[5]
+			}
 		}
 		if len(parts) >= 7 {
 			action.Extra = parts[6]
 		}
 
 	case "action":
-		if len(parts) >= 4 {
+		if len(parts) >= 3 {
 			action.Action = parts[2] // describe, delete, logs, exec, portforward, restart, scale, etc.
+		}
+		if len(parts) >= 4 {
 			action.ResourceType = parts[3]
 		}
 		if len(parts) >= 5 {

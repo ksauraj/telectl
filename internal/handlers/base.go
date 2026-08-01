@@ -6,25 +6,27 @@ import (
 	"strings"
 
 	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/k8s-telegram-bot/internal/bot"
-	"github.com/ksauraj/k8s-telegram-bot/internal/k8s"
-	"github.com/ksauraj/k8s-telegram-bot/internal/utils/formatters"
+	"github.com/ksauraj/telectl/internal/config"
+	"github.com/ksauraj/telectl/internal/k8s"
+	"github.com/ksauraj/telectl/internal/menus"
+	"github.com/ksauraj/telectl/internal/types"
+	"github.com/ksauraj/telectl/internal/utils/formatters"
 	"go.uber.org/zap"
 )
 
 type CommandHandler interface {
-	Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *bot.UserSession) error
+	Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error
 }
 
 type BaseHandler struct {
-	bot *bot.Bot
+	bot types.BotInterface
 }
 
-func NewBaseHandler(b *bot.Bot) *BaseHandler {
+func NewBaseHandler(b types.BotInterface) *BaseHandler {
 	return &BaseHandler{bot: b}
 }
 
-func (h *BaseHandler) getNamespace(session *bot.UserSession, args []string, defaultNS string) string {
+func (h *BaseHandler) getNamespace(session *types.UserSession, args []string, defaultNS string) string {
 	// Check for -n or --namespace flag
 	for i, arg := range args {
 		if arg == "-n" || arg == "--namespace" {
@@ -40,28 +42,23 @@ func (h *BaseHandler) getNamespace(session *bot.UserSession, args []string, defa
 		}
 	}
 	// Check session
-	session.mu.RLock()
-	ns := session.CurrentNS
-	session.mu.RUnlock()
+	ns := session.GetNamespace()
 	if ns != "" {
 		return ns
 	}
 	return defaultNS
 }
 
-func (h *BaseHandler) getContext(session *bot.UserSession) string {
-	session.mu.RLock()
-	ctx := session.CurrentCtx
-	session.mu.RUnlock()
-	return ctx
+func (h *BaseHandler) getContext(session *types.UserSession) string {
+	return session.CurrentCtx
 }
 
 func (h *BaseHandler) sendResponse(chatID int64, text string) {
-	h.bot.sendLongMessage(chatID, text)
+	h.bot.SendLongMessage(chatID, text)
 }
 
 func (h *BaseHandler) sendError(chatID int64, err error) {
-	h.bot.sendMessage(chatID, fmt.Sprintf("❌ Error: %s", err.Error()))
+	h.bot.SendMessage(chatID, fmt.Sprintf("❌ Error: %s", err.Error()))
 }
 
 func (h *BaseHandler) sendFormatted(chatID int64, resources []k8s.ResourceInfo, format string, wide bool) {
@@ -129,9 +126,39 @@ func parseFlags(args []string) (namespace, output, selector, fieldSelector strin
 }
 
 func (h *BaseHandler) getK8sClient() *k8s.Client {
-	return h.bot.k8sClient
+	if c, ok := h.bot.K8sClient().(*k8s.Client); ok {
+		return c
+	}
+	return nil
 }
 
 func (h *BaseHandler) getLogger() *zap.Logger {
-	return h.bot.logger
+	if l, ok := h.bot.Logger().(*zap.Logger); ok {
+		return l
+	}
+	return nil
+}
+
+// getConfig returns the typed *config.Config from the bot.
+func (h *BaseHandler) getConfig() *config.Config {
+	if c, ok := h.bot.Config().(*config.Config); ok {
+		return c
+	}
+	return nil
+}
+
+// getAPI returns the typed *tgbotapi.BotAPI from the bot.
+func (h *BaseHandler) getAPI() *tgbotapi.BotAPI {
+	if a, ok := h.bot.API().(*tgbotapi.BotAPI); ok {
+		return a
+	}
+	return nil
+}
+
+// getMenuBuilder returns the typed *menus.MenuBuilder from the bot.
+func (h *BaseHandler) getMenuBuilder() *menus.MenuBuilder {
+	if m, ok := h.bot.MenuBuilder().(*menus.MenuBuilder); ok {
+		return m
+	}
+	return nil
 }

@@ -5,10 +5,8 @@ import (
 	"io"
 	"testing"
 
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/k8s-telegram-bot/internal/bot"
-	"github.com/ksauraj/k8s-telegram-bot/internal/k8s"
-	"github.com/stretchr/testify/assert"
+	"github.com/ksauraj/telectl/internal/k8s"
+	"github.com/ksauraj/telectl/pkg/kubeconfig"
 	"github.com/stretchr/testify/mock"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -44,9 +42,9 @@ func (m *MockK8sClient) ExecInPod(ctx context.Context, opts k8s.ExecOptions) err
 	return args.Error(0)
 }
 
-func (m *MockK8sClient) ListContexts(ctx context.Context) ([]k8s.ContextInfo, error) {
+func (m *MockK8sClient) ListContexts(ctx context.Context) ([]kubeconfig.ContextInfo, error) {
 	args := m.Called(ctx)
-	return args.Get(0).([]k8s.ContextInfo), args.Error(1)
+	return args.Get(0).([]kubeconfig.ContextInfo), args.Error(1)
 }
 
 func (m *MockK8sClient) SwitchContext(name string) error {
@@ -54,20 +52,20 @@ func (m *MockK8sClient) SwitchContext(name string) error {
 	return args.Error(0)
 }
 
-func (m *MockK8sClient) GetCurrentContext() *k8s.ContextInfo {
+func (m *MockK8sClient) GetCurrentContext() *kubeconfig.ContextInfo {
 	args := m.Called()
 	if args.Get(0) == nil {
 		return nil
 	}
-	return args.Get(0).(*k8s.ContextInfo)
+	return args.Get(0).(*kubeconfig.ContextInfo)
 }
 
-func (m *MockK8sClient) GetKubeconfig() *k8s.KubeConfig {
+func (m *MockK8sClient) GetKubeconfig() *kubeconfig.KubeConfig {
 	args := m.Called()
 	if args.Get(0) == nil {
 		return nil
 	}
-	return args.Get(0).(*k8s.KubeConfig)
+	return args.Get(0).(*kubeconfig.KubeConfig)
 }
 
 func TestInlineQueryHandler_HandleInlineQuery(t *testing.T) {

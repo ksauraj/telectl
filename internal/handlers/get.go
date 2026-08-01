@@ -6,67 +6,23 @@ import (
 	"strings"
 
 	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/k8s-telegram-bot/internal/bot"
-	"github.com/ksauraj/k8s-telegram-bot/internal/k8s"
-	"github.com/ksauraj/k8s-telegram-bot/internal/utils/formatters"
+	"github.com/ksauraj/telectl/internal/types"
+	"github.com/ksauraj/telectl/internal/k8s"
+	"github.com/ksauraj/telectl/internal/utils/formatters"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"go.uber.org/zap"
 )
 
 type GetHandler struct {
 	*BaseHandler
 }
 
-func NewGetHandler(b *bot.Bot) *GetHandler {
+func NewGetHandler(b types.BotInterface) *GetHandler {
 	return &GetHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-var resourceMap = map[string]schemaGroupVersionResource{
-	"pod":              {Group: "", Version: "v1", Resource: "pods", Kind: "Pod"},
-	"pods":             {Group: "", Version: "v1", Resource: "pods", Kind: "Pod"},
-	"po":               {Group: "", Version: "v1", Resource: "pods", Kind: "Pod"},
-	"deployment":       {Group: "apps", Version: "v1", Resource: "deployments", Kind: "Deployment"},
-	"deployments":      {Group: "apps", Version: "v1", Resource: "deployments", Kind: "Deployment"},
-	"deploy":           {Group: "apps", Version: "v1", Resource: "deployments", Kind: "Deployment"},
-	"service":          {Group: "", Version: "v1", Resource: "services", Kind: "Service"},
-	"services":         {Group: "", Version: "v1", Resource: "services", Kind: "Service"},
-	"svc":              {Group: "", Version: "v1", Resource: "services", Kind: "Service"},
-	"replicaset":       {Group: "apps", Version: "v1", Resource: "replicasets", Kind: "ReplicaSet"},
-	"replicasets":      {Group: "apps", Version: "v1", Resource: "replicasets", Kind: "ReplicaSet"},
-	"rs":               {Group: "apps", Version: "v1", Resource: "replicasets", Kind: "ReplicaSet"},
-	"namespace":        {Group: "", Version: "v1", Resource: "namespaces", Kind: "Namespace"},
-	"namespaces":       {Group: "", Version: "v1", Resource: "namespaces", Kind: "Namespace"},
-	"ns":               {Group: "", Version: "v1", Resource: "namespaces", Kind: "Namespace"},
-	"node":             {Group: "", Version: "v1", Resource: "nodes", Kind: "Node"},
-	"nodes":            {Group: "", Version: "v1", Resource: "nodes", Kind: "Node"},
-	"no":               {Group: "", Version: "v1", Resource: "nodes", Kind: "Node"},
-	"configmap":        {Group: "", Version: "v1", Resource: "configmaps", Kind: "ConfigMap"},
-	"configmaps":       {Group: "", Version: "v1", Resource: "configmaps", Kind: "ConfigMap"},
-	"cm":               {Group: "", Version: "v1", Resource: "configmaps", Kind: "ConfigMap"},
-	"secret":           {Group: "", Version: "v1", Resource: "secrets", Kind: "Secret"},
-	"secrets":          {Group: "", Version: "v1", Resource: "secrets", Kind: "Secret"},
-	"pvc":              {Group: "", Version: "v1", Resource: "persistentvolumeclaims", Kind: "PersistentVolumeClaim"},
-	"pvcs":             {Group: "", Version: "v1", Resource: "persistentvolumeclaims", Kind: "PersistentVolumeClaim"},
-	"persistentvolumeclaim": {Group: "", Version: "v1", Resource: "persistentvolumeclaims", Kind: "PersistentVolumeClaim"},
-	"pv":               {Group: "", Version: "v1", Resource: "persistentvolumes", Kind: "PersistentVolume"},
-	"pvs":              {Group: "", Version: "v1", Resource: "persistentvolumes", Kind: "PersistentVolume"},
-	"persistentvolume": {Group: "", Version: "v1", Resource: "persistentvolumes", Kind: "PersistentVolume"},
-	"ingress":          {Group: "networking.k8s.io", Version: "v1", Resource: "ingresses", Kind: "Ingress"},
-	"ingresses":        {Group: "networking.k8s.io", Version: "v1", Resource: "ingresses", Kind: "Ingress"},
-	"ing":              {Group: "networking.k8s.io", Version: "v1", Resource: "ingresses", Kind: "Ingress"},
-	"event":            {Group: "", Version: "v1", Resource: "events", Kind: "Event"},
-	"events":           {Group: "", Version: "v1", Resource: "events", Kind: "Event"},
-	"ev":               {Group: "", Version: "v1", Resource: "events", Kind: "Event"},
-}
+var resourceMap = types.ResourceMap
 
-type schemaGroupVersionResource struct {
-	Group    string
-	Version  string
-	Resource string
-	Kind     string
-}
-
-func (h *GetHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *bot.UserSession) error {
+func (h *GetHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
 	if len(args) == 0 {
 		h.sendResponse(msg.Chat.ID, "Usage: /get <resource> [name] [-n namespace] [-o format] [-l selector]")
 		return nil
@@ -85,7 +41,7 @@ func (h *GetHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []s
 
 	// Use session namespace if not specified
 	if namespace == "" && gvr.Resource != "namespaces" && gvr.Resource != "nodes" && gvr.Resource != "persistentvolumes" {
-		namespace = h.getNamespace(session, args, h.bot.config.Kubernetes.DefaultNamespace)
+		namespace = h.getNamespace(session, args, h.getConfig().Kubernetes.DefaultNamespace)
 	}
 
 	// Check if getting a specific resource
@@ -126,15 +82,15 @@ func (h *GetHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []s
 }
 
 func (h *GetHandler) sendResponse(chatID int64, text string) {
-	h.bot.sendLongMessage(chatID, text)
+	h.bot.SendLongMessage(chatID, text)
 }
 
 func (h *GetHandler) sendSingleResource(chatID int64, resource *k8s.ResourceInfo, format string) {
 	output := formatters.FormatResource(resource, format)
-	h.bot.sendLongMessage(chatID, output)
+	h.bot.SendLongMessage(chatID, output)
 }
 
 func (h *GetHandler) sendFormatted(chatID int64, resources []k8s.ResourceInfo, format string, wide bool) {
 	output := formatters.FormatResourceList(resources, format, wide)
-	h.bot.sendLongMessage(chatID, output)
+	h.bot.SendLongMessage(chatID, output)
 }

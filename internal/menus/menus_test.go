@@ -3,7 +3,7 @@ package menus
 import (
 	"testing"
 
-	"github.com/ksauraj/k8s-telegram-bot/internal/config"
+	"github.com/ksauraj/telectl/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -73,10 +73,11 @@ func TestParseCallbackData(t *testing.T) {
 		},
 		{
 			name: "action logs with container",
-			data: "menu:action:logs:default:nginx-1:nginx",
+			data: "menu:action:logs:pods:default:nginx-1:nginx",
 			expected: &CallbackAction{
 				Type:        "action",
 				Action:      "logs",
+				ResourceType: "pods",
 				Namespace:   "default",
 				Name:        "nginx-1",
 				Container:   "nginx",
@@ -195,7 +196,7 @@ func TestMenuBuilder_IsMenuEnabled(t *testing.T) {
 
 func TestMenuBuilder_ParseResourceTypeFromButton(t *testing.T) {
 	cfg := &config.Config{}
-	mb := NewMenuBuilder(cfg)
+	_ = NewMenuBuilder(cfg)
 
 	// This is a private method, so we test via the public interface
 	// The mapping is tested in the handleReplyKeyboard integration test
