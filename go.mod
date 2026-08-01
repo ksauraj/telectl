@@ -17,6 +17,8 @@ require (
 	golang.org/x/sync v0.7.0
 	golang.org/x/text v0.14.0
 	golang.org/x/sys v0.17.0
+	golang.org/x/protobuf v1.6.1
+	golang/protobuf v1.6.1
 )
 
 require (
