@@ -25,6 +25,12 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	version = "dev"
+	commit  = "unknown"
+	date    = "unknown"
+)
+
 func main() {
 	// Initialize logger
 	logger, err := zap.NewProduction()
