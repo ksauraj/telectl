@@ -74,12 +74,14 @@ func InitConfig(configFile string) error {
 		viper.SetConfigType("yaml")
 		home, err := os.UserHomeDir()
 		if err == nil {
-			viper.AddConfigPath(".")
+			// NB: deliberately do NOT add "." (cwd) as a search path.
+			// A binary named k8s-telegram-bot built into the repo root
+			// (via 'make build') collides with the config name and viper
+			// tries to parse the executable as YAML, producing
+			// "yaml: control characters are not allowed".
 			viper.AddConfigPath(filepath.Join(home, ".config", "k8s-telegram-bot"))
 			viper.AddConfigPath(filepath.Join(home, ".config"))
 			viper.AddConfigPath("/etc/k8s-telegram-bot")
-		} else {
-			viper.AddConfigPath(".")
 		}
 	}
 
@@ -109,13 +111,26 @@ func InitConfig(configFile string) error {
 		} else {
 			usedFile := viper.ConfigFileUsed()
 			// detect the most common misconfiguration: viper accidentally
-			// picked up a kubeconfig file as the bot config.
+			// picked up a kubeconfig file (or the compiled binary itself)
+			// as the bot config.
 			if usedFile != "" {
 				if fi, statErr := os.Stat(usedFile); statErr == nil && fi.Size() > 0 {
-					// kubeconfig files commonly reference apiVersion: v1
+					// Refuse a file with no recognized config extension —
+					// this catches the case where the compiled binary
+					// (k8s-telegram-bot, no extension) is found as config.
+					ext := strings.ToLower(filepath.Ext(usedFile))
+					validExts := map[string]bool{
+						".yaml": true, ".yml": true, ".json": true,
+						".toml": true, ".ini": true, ".env": true,
+						".properties": true, ".props": true, ".prop": true,
+						".hcl": true, ".tfvars": true, ".dotenv": true,
+					}
+					if ext == "" || !validExts[ext] {
+						return fmt.Errorf("refusing to use %q as bot config: not a recognized config file (ext=%q). Pass --config /path/to/k8s-telegram-bot.yaml explicitly", usedFile, ext)
+					}
 					raw, readErr := os.ReadFile(usedFile)
 					if readErr == nil && (strings.Contains(string(raw), "apiVersion: v1") || strings.Contains(string(raw), "certificate-authority-data")) && !strings.Contains(string(raw), "telegram") {
-						return fmt.Errorf("refusing to use %q as bot config: it looks like a kubeconfig file. Move/remove it or pass --config /path/to/k8s-telegram-bot.yaml explicitly", usedFile)
+						return fmt.Errorf("refusing to use %q as bot config: it looks like a kubeconfig file. Pass --config /path/to/k8s-telegram-bot.yaml explicitly", usedFile)
 					}
 				}
 			}
