@@ -40,7 +40,7 @@ func TestGeneratedButtonsRespectCallbackLimit(t *testing.T) {
 			"deployments", "kube-system", longNames[1], nil)),
 		"confirmDelete": buttonData(mb.GetConfirmDeleteKeyboard(
 			"secrets", "kube-system", longNames[3])),
-		"scale":      buttonData(mb.GetScaleKeyboard("kube-system", longNames[1], 3)),
+		"scale":      buttonData(mb.GetScaleKeyboard("deployments", "kube-system", longNames[1], 3)),
 		"logOptions": buttonData(mb.GetLogOptionsKeyboard("kube-system", longNames[0], "manager")),
 	}
 

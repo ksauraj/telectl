@@ -6,6 +6,7 @@ import (
 	"github.com/ksauraj/telectl/internal/config"
 	"github.com/ksauraj/telectl/internal/k8s"
 	"github.com/ksauraj/telectl/internal/tg"
+	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/pkg/kubeconfig"
 )
 
@@ -25,6 +26,12 @@ func NewMenuBuilder(cfg *config.Config) *MenuBuilder {
 // reject the entire keyboard with BUTTON_DATA_INVALID, not just one button.
 func (mb *MenuBuilder) btn(text, data string) tg.InlineKeyboardButton {
 	return tg.InlineButtonData(text, mb.tokens.Shorten(data))
+}
+
+// Button is the exported form of btn, for keyboards assembled outside this
+// package (e.g. the drain confirmation in the bot).
+func (mb *MenuBuilder) Button(text, data string) tg.InlineKeyboardButton {
+	return mb.btn(text, data)
 }
 
 // ResolveCallback expands token callback data back to its full form. Returns
@@ -264,90 +271,197 @@ func (mb *MenuBuilder) formatResourceButton(r k8s.ResourceInfo) string {
 	return statusIcon + " " + name
 }
 
-// GetResourceActionInlineKeyboard returns action buttons for a specific resource
+// GetResourceActionInlineKeyboard returns the detail pane for one resource:
+// the inspection verbs every kind supports, then the verbs specific to this
+// kind, then navigation.
+//
+// Every button here is built with actionData, so the positional contract that
+// ParseCallbackData relies on ("menu:action:<verb>:<type>:<ns>:<name>:<args…>")
+// holds for all of them. Buttons that omitted the type field used to shift
+// every later field left, which is why the pod Logs button parsed with an empty
+// Name and silently did nothing.
 func (mb *MenuBuilder) GetResourceActionInlineKeyboard(resourceType, namespace, name string, resource *k8s.ResourceInfo) tg.InlineKeyboardMarkup {
+	kind := CanonicalResource(resourceType)
 	var rows [][]tg.InlineKeyboardButton
 
-	// Common actions for all resources
+	act := func(verb string, args ...string) string {
+		return actionData(verb, kind, namespace, name, args...)
+	}
+
+	// Inspection verbs, meaningful for every kind.
 	rows = append(rows, tg.InlineKeyboardRow(
-		mb.btn("📝 Describe", "menu:action:describe:"+resourceType+":"+namespace+":"+name),
-		mb.btn("🗑️ Delete", "menu:action:delete:"+resourceType+":"+namespace+":"+name),
+		mb.btn("📝 Describe", act("describe")),
+		mb.btn("🏷️ Labels", act("labels")),
+		mb.btn("📅 Events", act("events")),
 	))
 
-	// Resource-specific actions
-	switch resourceType {
+	switch kind {
 	case "pods":
 		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("📋 Logs", "menu:action:logs:"+namespace+":"+name),
-			mb.btn("🖥️ Exec", "menu:action:exec:"+namespace+":"+name),
-			mb.btn("🔌 Port Forward", "menu:action:portforward:"+namespace+":"+name),
+			mb.btn("📋 Logs", act("logsopts")),
+			mb.btn("🖥️ Exec", act("exec")),
+			mb.btn("🔌 Forward", act("portforward")),
 		))
-		if resource != nil {
-			// Add container selection if multiple containers
-			if containers, ok := resource.Details["spec"].(map[string]interface{})["containers"].([]interface{}); ok && len(containers) > 1 {
-				var containerRow []tg.InlineKeyboardButton
-				for _, c := range containers {
-					if container, ok := c.(map[string]interface{}); ok {
-						if cName, ok := container["name"].(string); ok {
-							containerRow = append(containerRow, mb.btn("📋 "+cName, "menu:action:logs:"+namespace+":"+name+":"+cName))
-						}
-					}
-				}
-				if len(containerRow) > 0 {
-					rows = append(rows, containerRow)
+		if names := podContainerNames(resource); len(names) > 1 {
+			var row []tg.InlineKeyboardButton
+			for _, c := range names {
+				row = append(row, mb.btn("📄 "+c, act("logs", c)))
+				if len(row) == 3 {
+					rows = append(rows, row)
+					row = nil
 				}
 			}
+			if len(row) > 0 {
+				rows = append(rows, row)
+			}
+		}
+		if node := podNodeName(resource); node != "" {
+			rows = append(rows, tg.InlineKeyboardRow(
+				mb.btn("🖥️ Node: "+shortLabel(node, 16), "menu:resource:view:nodes::"+node),
+			))
 		}
 
 	case "deployments":
 		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("🔄 Restart", "menu:action:restart:"+namespace+":"+name),
-			mb.btn("📈 Scale", "menu:action:scale:"+namespace+":"+name),
-			mb.btn("📋 Pods", "menu:action:pods:"+namespace+":"+name),
+			mb.btn("🔄 Restart", act("restart")),
+			mb.btn("📈 Scale", act("scale")),
+			mb.btn("📋 Pods", act("pods")),
 		))
 		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("📝 Edit", "menu:action:edit:"+resourceType+":"+namespace+":"+name),
-			mb.btn("📜 History", "menu:action:history:"+namespace+":"+name),
-		))
-
-	case "services":
-		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("🔌 Port Forward", "menu:action:portforward:"+namespace+":"+name),
-			mb.btn("📋 Endpoints", "menu:action:endpoints:"+namespace+":"+name),
-		))
-
-	case "nodes":
-		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("📊 Top", "menu:action:top:node:"+name),
-			mb.btn("📋 Pods", "menu:action:nodepods:"+name),
-			mb.btn("🔧 Cordon", "menu:action:cordon:"+name),
-		))
-		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("🔓 Uncordon", "menu:action:uncordon:"+name),
-			mb.btn("💤 Drain", "menu:action:drain:"+name),
-		))
-
-	case "namespaces":
-		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("📋 Resources", "menu:action:nsresources:"+name),
-			mb.btn("🗑️ Delete", "menu:action:delete:namespace::"+name),
+			mb.btn("🎯 Selector", act("selector")),
+			mb.btn("📜 History", act("history")),
+			mb.btn("📄 YAML", act("edit")),
 		))
 
 	case "replicasets":
 		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("📋 Pods", "menu:action:rspods:"+namespace+":"+name),
-			mb.btn("📈 Scale", "menu:action:rsscale:"+namespace+":"+name),
+			mb.btn("📋 Pods", act("rspods")),
+			mb.btn("📈 Scale", act("rsscale")),
+			mb.btn("🎯 Selector", act("selector")),
+		))
+
+	case "services":
+		rows = append(rows, tg.InlineKeyboardRow(
+			mb.btn("📋 Endpoints", act("endpoints")),
+			mb.btn("🎯 Selector", act("selector")),
+			mb.btn("🔌 Forward", act("portforward")),
+		))
+
+	case "nodes":
+		rows = append(rows, tg.InlineKeyboardRow(
+			mb.btn("📊 Top", act("top")),
+			mb.btn("📋 Pods", act("nodepods")),
+		))
+		// Cordon and uncordon are opposites; showing only the one that would
+		// change something makes the node's current state readable from the
+		// keyboard alone.
+		if nodeIsCordoned(resource) {
+			rows = append(rows, tg.InlineKeyboardRow(
+				mb.btn("🔓 Uncordon", act("uncordon")),
+				mb.btn("💤 Drain", act("drain")),
+			))
+		} else {
+			rows = append(rows, tg.InlineKeyboardRow(
+				mb.btn("🔧 Cordon", act("cordon")),
+				mb.btn("💤 Drain", act("drain")),
+			))
+		}
+
+	case "namespaces":
+		rows = append(rows, tg.InlineKeyboardRow(
+			mb.btn("📋 Resources", act("nsresources")),
+			mb.btn("🌐 Switch to", "menu:ns:set:"+name),
 		))
 	}
 
-	// Navigation
+	// Destructive verb kept on its own row so it is not tapped by accident.
 	rows = append(rows, tg.InlineKeyboardRow(
-		mb.btn("🔄 Refresh", "menu:resource:view:"+resourceType+":"+namespace+":"+name),
-		mb.btn("🔙 List", "menu:resource:list:"+resourceType+":"+namespace),
+		mb.btn("🗑️ Delete", act("delete")),
+	))
+
+	rows = append(rows, tg.InlineKeyboardRow(
+		mb.btn("🔄 Refresh", "menu:resource:view:"+kind+":"+namespace+":"+name),
+		mb.btn("🔙 List", "menu:resource:list:"+kind+":"+namespace),
+		mb.btn("❓ Help", act("help")),
 		mb.btn("🏠 Main", "menu:main"),
 	))
 
 	return tg.InlineKeyboard(rows...)
+}
+
+// actionData builds callback data in the one shape ParseCallbackData decodes.
+func actionData(verb, resourceType, namespace, name string, args ...string) string {
+	data := "menu:action:" + verb + ":" + resourceType + ":" + namespace + ":" + name
+	for _, a := range args {
+		data += ":" + a
+	}
+	return data
+}
+
+// CanonicalResource maps any alias ("po", "pod") to the plural resource name
+// ("pods") so callback data is stable no matter which alias produced it.
+func CanonicalResource(alias string) string {
+	if gvr, ok := types.ResourceMap[alias]; ok {
+		return gvr.Resource
+	}
+	return alias
+}
+
+// podContainerNames lists a pod's containers, used to offer per-container logs.
+func podContainerNames(resource *k8s.ResourceInfo) []string {
+	if resource == nil || resource.Details == nil {
+		return nil
+	}
+	spec, ok := resource.Details["spec"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	containers, ok := spec["containers"].([]interface{})
+	if !ok {
+		return nil
+	}
+	var names []string
+	for _, c := range containers {
+		cm, ok := c.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if n, ok := cm["name"].(string); ok && n != "" {
+			names = append(names, n)
+		}
+	}
+	return names
+}
+
+func podNodeName(resource *k8s.ResourceInfo) string {
+	if resource == nil || resource.Details == nil {
+		return ""
+	}
+	spec, ok := resource.Details["spec"].(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	n, _ := spec["nodeName"].(string)
+	return n
+}
+
+func nodeIsCordoned(resource *k8s.ResourceInfo) bool {
+	if resource == nil || resource.Details == nil {
+		return false
+	}
+	spec, ok := resource.Details["spec"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	v, _ := spec["unschedulable"].(bool)
+	return v
+}
+
+func shortLabel(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max-1] + "…"
 }
 
 // GetContextsInlineKeyboard returns inline keyboard for context management
@@ -512,8 +626,10 @@ func (mb *MenuBuilder) GetConfirmDeleteKeyboard(resourceType, namespace, name st
 	)
 }
 
-// GetScaleKeyboard returns keyboard for scaling deployments
-func (mb *MenuBuilder) GetScaleKeyboard(namespace, name string, currentReplicas int32) tg.InlineKeyboardMarkup {
+// GetScaleKeyboard builds the quick-scale and custom-scale chooser for a
+// deployment or replicaset. kind is the canonical plural resource name; the
+// actionData contract puts it in the slot ParseCallbackData expects.
+func (mb *MenuBuilder) GetScaleKeyboard(kind, namespace, name string, currentReplicas int32) tg.InlineKeyboardMarkup {
 	var rows [][]tg.InlineKeyboardButton
 
 	// Quick scale buttons
@@ -524,7 +640,7 @@ func (mb *MenuBuilder) GetScaleKeyboard(namespace, name string, currentReplicas 
 		if r == currentReplicas {
 			label = "✅ " + label
 		}
-		scaleRow = append(scaleRow, mb.btn(label, "menu:action:scaleset:"+namespace+":"+name+":"+intToString(int(r))))
+		scaleRow = append(scaleRow, mb.btn(label, actionData("scaleset", kind, namespace, name, intToString(int(r)))))
 		if len(scaleRow) == 3 {
 			rows = append(rows, scaleRow)
 			scaleRow = []tg.InlineKeyboardButton{}
@@ -536,27 +652,25 @@ func (mb *MenuBuilder) GetScaleKeyboard(namespace, name string, currentReplicas 
 
 	// Custom scale
 	rows = append(rows, tg.InlineKeyboardRow(
-		mb.btn("✏️ Custom", "menu:action:scalecustom:"+namespace+":"+name),
-		mb.btn("🔙 Back", "menu:resource:view:deployments:"+namespace+":"+name),
+		mb.btn("✏️ Custom", actionData("scalecustom", kind, namespace, name)),
+		mb.btn("🔙 Back", "menu:resource:view:"+kind+":"+namespace+":"+name),
 	))
 
 	return tg.InlineKeyboard(rows...)
 }
 
-// GetLogOptionsKeyboard returns keyboard for log options
+// GetLogOptionsKeyboard offers the log verbs for one pod/container: tail
+// sizes, follow, and previous-container logs.
 func (mb *MenuBuilder) GetLogOptionsKeyboard(namespace, name, container string) tg.InlineKeyboardMarkup {
-	followText := "👁️ Follow"
-	// We can't track follow state here, but the handler can
-
 	return tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			mb.btn("📋 Last 50", "menu:action:logs:"+namespace+":"+name+":"+container+":50"),
-			mb.btn("📋 Last 100", "menu:action:logs:"+namespace+":"+name+":"+container+":100"),
-			mb.btn("📋 Last 500", "menu:action:logs:"+namespace+":"+name+":"+container+":500"),
+			mb.btn("📋 Last 50", actionData("logs", "pods", namespace, name, container, "50")),
+			mb.btn("📋 Last 100", actionData("logs", "pods", namespace, name, container, "100")),
+			mb.btn("📋 Last 500", actionData("logs", "pods", namespace, name, container, "500")),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn(followText, "menu:action:logsfollow:"+namespace+":"+name+":"+container),
-			mb.btn("⏮️ Previous", "menu:action:logsprevious:"+namespace+":"+name+":"+container),
+			mb.btn("👁️ Follow", actionData("logsfollow", "pods", namespace, name, container)),
+			mb.btn("⏮️ Previous", actionData("logsprevious", "pods", namespace, name, container)),
 		),
 		tg.InlineKeyboardRow(
 			mb.btn("🔙 Back", "menu:resource:view:pods:"+namespace+":"+name),
@@ -638,6 +752,13 @@ func ParseCallbackData(data string) *CallbackAction {
 		}
 		if len(parts) >= 8 {
 			action.Extra = parts[7]
+		}
+		// Verbs whose trailing argument is a value rather than a container name
+		// carry it in the same slot, but the dispatcher reads it from Extra.
+		// ParseCallbackData is the only place that knows which verb is which, so
+		// the routing happens here.
+		if action.Action == "scaleset" && len(parts) >= 7 {
+			action.Extra = parts[6]
 		}
 
 	case "ctx":

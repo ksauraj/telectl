@@ -450,11 +450,9 @@ func (b *Bot) dispatchResourceCallback(ctx context.Context, chatID int64, messag
 		if action.ResourceType == "" || action.Name == "" {
 			return
 		}
-		args := []string{action.ResourceType, action.Name}
-		if action.Namespace != "" {
-			args = append(args, "-n", action.Namespace)
-		}
-		b.runCommand(ctx, "describe", args, chatID, session)
+		// The detail pane: a compact summary plus per-kind action buttons.
+		// Full describe output is one tap away behind the Describe button.
+		b.showResourceDetail(ctx, chatID, messageID, action.ResourceType, action.Namespace, action.Name, session)
 
 	case "refresh", "list", "page", "filter":
 		// The resource-type buttons emit "menu:resource:<type>", which the
@@ -670,6 +668,12 @@ func (b *Bot) dispatchSettingsCallback(ctx context.Context, chatID int64, messag
 
 // dispatchResourceAction handles the "menu:action:*" family (per-resource verbs).
 func (b *Bot) dispatchResourceAction(ctx context.Context, chatID int64, messageID int, action *menus.CallbackAction, session *types.UserSession) {
+	// The detail pane's verbs are handled here; anything unrecognised falls
+	// through to the legacy verbs below.
+	if b.dispatchDetailAction(ctx, chatID, messageID, action, session) {
+		return
+	}
+
 	nsArgs := func() []string {
 		if action.Namespace != "" {
 			return []string{"-n", action.Namespace}
@@ -678,25 +682,12 @@ func (b *Bot) dispatchResourceAction(ctx context.Context, chatID int64, messageI
 	}
 
 	switch action.Action {
-	case "describe":
-		if action.ResourceType == "" || action.Name == "" {
-			return
-		}
-		b.runCommand(ctx, "describe", append([]string{action.ResourceType, action.Name}, nsArgs()...), chatID, session)
-
 	case "logs":
-		// For pod logs the parser puts the pod name in Namespace/Name depending
-		// on the button shape; both emit "...:<namespace>:<name>".
+		// Pod log buttons built before the detail pane carried no type field.
 		if action.Name == "" {
 			return
 		}
 		b.runCommand(ctx, "logs", append([]string{action.Name}, nsArgs()...), chatID, session)
-
-	case "restart":
-		if action.Name == "" {
-			return
-		}
-		b.runCommand(ctx, "restart", append([]string{"deployment", action.Name}, nsArgs()...), chatID, session)
 
 	case "delete":
 		if action.ResourceType == "" || action.Name == "" {
@@ -712,13 +703,11 @@ func (b *Bot) dispatchResourceAction(ctx context.Context, chatID int64, messageI
 	case "confirmdelete":
 		b.confirmDelete(ctx, chatID, messageID, action, session)
 
-	case "scale":
+	case "restart":
 		if action.Name == "" {
 			return
 		}
-		b.SendMessage(chatID, fmt.Sprintf(
-			"📈 Usage: <code>/scale deployment %s &lt;replicas&gt; -n %s</code>",
-			formatters.EscapeHTML(action.Name), formatters.EscapeHTML(action.Namespace)))
+		b.runCommand(ctx, "restart", append([]string{"deployment", action.Name}, nsArgs()...), chatID, session)
 
 	case "exec":
 		b.SendMessage(chatID, "🖥️ Usage: <code>/exec &lt;pod&gt; [-c container] -n &lt;namespace&gt; -- &lt;command&gt;</code>")

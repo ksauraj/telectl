@@ -173,38 +173,72 @@ Page size comes from `bot.menu_page_size` (default 10).
 
 ### Per-resource actions
 
-Tapping a resource in the list runs **Describe** on it directly, posting the
-full detail as a new message. The detail keyboard adds:
+Tapping a resource in the list opens a **detail pane** in the same message: a
+compact summary (kind, status, age, and a few facts that answer the first
+question you ask) plus the action keyboard for that kind. It no longer dumps a
+full describe — that is now one tap away behind **📝 Describe**.
+
+Every kind gets the inspection row:
 
 | Button | Effect |
 |---|---|
-| 📝 Describe | Full detail, as a new message |
+| 📝 Describe | Full detail (spec, status, labels, annotations), as a new message |
+| 🏷️ Labels | Labels and annotations on their own |
+| 📅 Events | Recent events naming this object |
 | 🗑️ Delete | Opens a confirmation prompt — never deletes immediately |
 
 Type-specific actions:
 
 | Type | Actions |
 |---|---|
-| **Pods** | 📋 Logs · 🖥️ Exec · 🔌 Port Forward |
-| **Deployments** | 🔄 Restart · 📈 Scale |
-| **Services** | 🔌 Port Forward |
-| **Nodes** | *(see "Not yet wired" below)* |
-| **Namespaces** | 🗑️ Delete |
-| **ReplicaSets** | *(see "Not yet wired" below)* |
+| **Pods** | 📋 Logs · 🖥️ Exec · 🔌 Forward · (per-container log buttons when a pod has >1 container) · 🖥️ Node (jump to the node it runs on) |
+| **Deployments** | 🔄 Restart · 📈 Scale · 📋 Pods · 🎯 Selector · 📜 History · 📄 YAML |
+| **ReplicaSets** | 📋 Pods · 📈 Scale · 🎯 Selector |
+| **Services** | 📋 Endpoints · 🎯 Selector · 🔌 Forward |
+| **Nodes** | 📊 Top · 📋 Pods · 🔧 Cordon / 🔓 Uncordon (whichever changes something) · 💤 Drain (confirmed) |
+| **Namespaces** | 📋 Resources (object counts per kind) · 🌐 Switch to |
+| **Every pane** | ❓ Help — explains each button for the current kind |
 
-### Not yet wired
+Details on the notable verbs:
 
-Several buttons are rendered by the keyboard builders but have no dispatcher
-branch yet. Tapping one replies **"⚠️ That action is not available yet."**
-rather than doing nothing silently:
+- **📋 Pods** (deployment/ReplicaSet) — resolves the live selector and lists
+  the pods it matches, each still tappable. **📋 Pods** on a node lists
+  everything scheduled there across all namespaces.
+- **🎯 Selector** — shows the selector and the pods it currently matches, so
+  you can tell a wrong selector from missing pods at a glance.
+- **📋 Endpoints** — a service's backing addresses, split into **ready** and
+  **not ready**. A service with only not-ready endpoints looks healthy in a
+  list but serves no traffic.
+- **📜 History** — the deployment's revisions, reconstructed from the
+  ReplicaSets it owns (the same way `kubectl rollout history` does it), newest
+  first, with the current revision marked ✅.
+- **📄 YAML** — the live manifest as YAML, read-only. There is no apply-from-
+  chat: writing a manifest back could silently overwrite a change someone made
+  seconds earlier, with no diff and no lock.
+- **📊 Top** (node) — CPU/memory from metrics-server. Without metrics-server,
+  you get an explanation, not a raw 404.
+- **🔧 Cordon / 🔓 Uncordon** — only the button that *changes* the node's
+  state is shown: a cordoned node offers Uncordon, an open node offers Cordon.
+- **💤 Drain** — asks for confirmation first, then cordons and evicts. Pods
+  owned by DaemonSets and static/mirror pods are left in place; evictions
+  respect PodDisruptionBudgets, so refused evictions are reported, not
+  escalated to a delete. The node stays cordoned if anything failed.
+- **📋 Logs** (pod) — opens a chooser: last 50 / 100 / 500 lines, 👁️ Follow
+  (a fresh 200-line snapshot — live streaming is not practical in chat), or
+  ⏮️ Previous (the previous container instance; usually empty until a restart).
+- **📈 Scale** — quick counts (0, 1, 2, 3, 5, 10) with the current count
+  marked, plus a Custom button that shows the `/scale` command form.
+  ReplicaSet scaling warns that a Deployment owner will revert the change.
 
-`cordon` · `uncordon` · `drain` · `nodepods` · `top` (from a node) ·
-`endpoints` · `history` · `edit` · `pods` (from a deployment) · `rspods` ·
-`rsscale` · `scaleset` · `scalecustom` · `logsfollow` · `logsprevious` ·
-`nsresources`
+Every mutating verb (cordon, drain, scale, delete) reports what it did, notes
+when it was a dry run, and re-renders the detail pane so the keyboard reflects
+the new state.
 
-The equivalent typed commands still work where one exists — e.g. `/top nodes`
-for node metrics, `/scale deployment <name> <n>` for an exact replica count.
+### "Not yet wired" — nothing left
+
+Every button rendered by the keyboard builders now has a dispatcher branch.
+If you ever tap something and see **"⚠️ That action is not available yet."**,
+that is a bug — please report it.
 
 ### Deletion is always confirmed
 

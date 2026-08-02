@@ -27,7 +27,10 @@ import (
 )
 
 type Client struct {
-	clientset     *kubernetes.Clientset
+	// clientset is the interface, not *kubernetes.Clientset, so tests can
+	// inject a fake and exercise the typed verbs (cordon, drain, scale)
+	// without a cluster.
+	clientset     kubernetes.Interface
 	dynamicClient dynamic.Interface
 	restConfig    *rest.Config
 	kubeconfig    *kubeconfig.KubeConfig
@@ -254,7 +257,7 @@ func (c *Client) GetRESTConfig() *rest.Config {
 	return c.restConfig
 }
 
-func (c *Client) GetClientset() *kubernetes.Clientset {
+func (c *Client) GetClientset() kubernetes.Interface {
 	return c.clientset
 }
 
@@ -614,4 +617,20 @@ func (c *Client) CheckPermission(ctx context.Context, verb, resource, namespace 
 		return false, err
 	}
 	return result.Status.Allowed, nil
+}
+
+// NewClientForTest builds a Client around injected API clients.
+//
+// The production constructor needs a reachable cluster and a kubeconfig on
+// disk, which makes the menu verbs (cordon, drain, scale, rollout history)
+// untestable. Passing fakes here exercises the same code paths the bot uses.
+func NewClientForTest(clientset kubernetes.Interface, dynamicClient dynamic.Interface, logger *zap.Logger, dryRun bool) *Client {
+	return &Client{
+		clientset:     clientset,
+		dynamicClient: dynamicClient,
+		restConfig:    &rest.Config{Host: "https://test.invalid"},
+		kubeconfig:    &kubeconfig.KubeConfig{},
+		logger:        logger,
+		dryRun:        dryRun,
+	}
 }

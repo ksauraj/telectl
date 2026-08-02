@@ -40,7 +40,7 @@ func TestAllRenderedButtonsParse(t *testing.T) {
 		"operations":    buttonData(mb.GetOperationsInlineKeyboard()),
 		"settings":      buttonData(mb.GetSettingsInlineKeyboard()),
 		"confirmDelete": buttonData(mb.GetConfirmDeleteKeyboard("pods", "default", "my-pod")),
-		"scale":         buttonData(mb.GetScaleKeyboard("default", "web", 3)),
+		"scale":         buttonData(mb.GetScaleKeyboard("deployments", "default", "web", 3)),
 		"logOptions":    buttonData(mb.GetLogOptionsKeyboard("default", "my-pod", "app")),
 	}
 
