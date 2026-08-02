@@ -6,9 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	bottg "github.com/go-telegram/bot"
 	"github.com/ksauraj/telectl/internal/config"
 	"github.com/ksauraj/telectl/internal/menus"
+	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/utils/formatters"
 )
@@ -21,7 +22,7 @@ func NewContextsHandler(b types.BotInterface) *ContextsHandler {
 	return &ContextsHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *ContextsHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *ContextsHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	client := h.getK8sClient()
 	kubeconfig := client.GetKubeconfig()
 
@@ -39,7 +40,7 @@ func (h *ContextsHandler) Handle(ctx context.Context, msg *tgbotapi.Message, arg
 	mb, _ := h.bot.MenuBuilder().(*menus.MenuBuilder)
 	keyboard := mb.GetContextsInlineKeyboard(contexts)
 	output := formatters.FormatContexts(contexts)
-	h.bot.SendKeyboard(msg.Chat.ID, output, keyboard)
+	h.bot.SendKeyboard(msg.Chat.ID, output, &keyboard)
 	return nil
 }
 
@@ -51,7 +52,7 @@ func NewUseContextHandler(b types.BotInterface) *UseContextHandler {
 	return &UseContextHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *UseContextHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *UseContextHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	if len(args) == 0 {
 		h.sendResponse(msg.Chat.ID, "Usage: /use-context <context-name>")
 		return nil
@@ -79,7 +80,7 @@ func NewConfigHandler(b types.BotInterface) *ConfigHandler {
 	return &ConfigHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *ConfigHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *ConfigHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	client := h.getK8sClient()
 	kc := client.GetKubeconfig()
 
@@ -90,11 +91,14 @@ func (h *ConfigHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args 
 
 	currentNS := session.GetNamespace()
 	cfg, _ := h.bot.Config().(*config.Config)
-	api, _ := h.bot.API().(*tgbotapi.BotAPI)
+	libBot := h.bot.API().(*bottg.Bot)
 
 	botUsername := "telectl"
-	if api != nil {
-		botUsername = api.Self.UserName
+	if libBot != nil {
+		me, _ := libBot.GetMe(context.Background())
+		if me != nil {
+			botUsername = me.Username
+		}
 	}
 	parseMode := "Markdown"
 	if cfg.Telegram.ParseMode != "" {
@@ -146,7 +150,7 @@ func NewPortForwardHandler(b types.BotInterface) *PortForwardHandler {
 	return &PortForwardHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *PortForwardHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *PortForwardHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	if len(args) < 2 {
 		h.sendResponse(msg.Chat.ID, "Usage: /portforward <pod> <local:remote> [-n namespace]")
 		return nil

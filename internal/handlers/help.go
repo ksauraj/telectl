@@ -3,7 +3,7 @@ package handlers
 import (
 	"context"
 
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
 )
 
@@ -15,7 +15,7 @@ func NewHelpHandler(b types.BotInterface) *HelpHandler {
 	return &HelpHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *HelpHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *HelpHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	help := `📚 *k8s-telegram-bot Command Reference*
 
 *Resource Commands:*

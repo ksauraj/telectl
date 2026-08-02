@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	bottg "github.com/go-telegram/bot"
+	botmodels "github.com/go-telegram/bot/models"
+	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/utils/formatters"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -19,14 +21,12 @@ func NewInlineQueryHandler(b types.BotInterface) *InlineQueryHandler {
 	return &InlineQueryHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery *tgbotapi.InlineQuery) error {
+func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery *tg.InlineQuery) error {
 	query := strings.TrimSpace(inlineQuery.Query)
 	if query == "" {
-		// Show help when empty query
 		return h.showInlineHelp(inlineQuery)
 	}
 
-	// Parse inline query: @bot pods, @bot pods nginx, @bot pods -n kube-system
 	parts := strings.Fields(query)
 	if len(parts) == 0 {
 		return h.showInlineHelp(inlineQuery)
@@ -35,35 +35,33 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 	resourceType := strings.ToLower(parts[0])
 	args := parts[1:]
 
-	// Map resource aliases
 	resourceMap := map[string]string{
-		"po":    "pods",
-		"pod":   "pods",
-		"deploy": "deployments",
+		"po":         "pods",
+		"pod":        "pods",
+		"deploy":     "deployments",
 		"deployment": "deployments",
-		"svc":   "services",
-		"service": "services",
-		"rs":    "replicasets",
+		"svc":        "services",
+		"service":    "services",
+		"rs":         "replicasets",
 		"replicaset": "replicasets",
-		"ns":    "namespaces",
-		"namespace": "namespaces",
-		"no":    "nodes",
-		"node":  "nodes",
-		"cm":    "configmaps",
-		"configmap": "configmaps",
-		"pvc":   "pvcs",
-		"pv":    "pvs",
-		"ing":   "ingresses",
-		"ingress": "ingresses",
-		"ev":    "events",
-		"event": "events",
+		"ns":         "namespaces",
+		"namespace":  "namespaces",
+		"no":         "nodes",
+		"node":       "nodes",
+		"cm":         "configmaps",
+		"configmap":  "configmaps",
+		"pvc":        "pvcs",
+		"pv":         "pvs",
+		"ing":        "ingresses",
+		"ingress":    "ingresses",
+		"ev":         "events",
+		"event":      "events",
 	}
 
 	if mapped, ok := resourceMap[resourceType]; ok {
 		resourceType = mapped
 	}
 
-	// Valid resource types
 	validResources := map[string]schema.GroupVersionResource{
 		"pods":        {Group: "", Version: "v1", Resource: "pods"},
 		"deployments": {Group: "apps", Version: "v1", Resource: "deployments"},
@@ -84,7 +82,6 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 		return h.showInlineHelp(inlineQuery)
 	}
 
-	// Parse flags
 	namespace := ""
 	name := ""
 	labelSelector := ""
@@ -120,17 +117,16 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 	client := h.getK8sClient()
 
 	if name != "" {
-		// Get specific resource
 		resource, err := client.GetResource(ctx, gvr, namespace, name)
 		if err != nil {
-			return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResultArticle{
+			return h.answerInlineQuery(ctx, inlineQuery.ID, []tg.InlineQueryResultArticle{
 				{
 					Type:        "article",
 					ID:          "error",
 					Title:       "Error",
 					Description: err.Error(),
-					InputMessageContent: &tgbotapi.InputTextMessageContent{
-						Text:        fmt.Sprintf("❌ Error: %s", err.Error()),
+					InputMessageContent: &tg.InputTextMessageContent{
+						MessageText: fmt.Sprintf("❌ Error: %s", err.Error()),
 						ParseMode:   "MarkdownV2",
 					},
 				},
@@ -138,31 +134,30 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 		}
 
 		text := formatters.FormatResource(resource, "wide")
-		return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResultArticle{
+		return h.answerInlineQuery(ctx, inlineQuery.ID, []tg.InlineQueryResultArticle{
 			{
 				Type:        "article",
 				ID:          "resource-" + name,
 				Title:       fmt.Sprintf("%s/%s", resourceType, name),
 				Description: fmt.Sprintf("Namespace: %s | Status: %s", namespace, resource.Status),
-				InputMessageContent: &tgbotapi.InputTextMessageContent{
-					Text:      "```\n" + text + "\n```",
-					ParseMode: "MarkdownV2",
+				InputMessageContent: &tg.InputTextMessageContent{
+					MessageText: "```\n" + text + "\n```",
+					ParseMode:   "MarkdownV2",
 				},
 			},
 		})
 	}
 
-	// List resources
 	resources, err := client.ListResources(ctx, gvr, namespace, labelSelector, "")
 	if err != nil {
-		return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResultArticle{
+		return h.answerInlineQuery(ctx, inlineQuery.ID, []tg.InlineQueryResultArticle{
 			{
 				Type:        "article",
 				ID:          "error",
 				Title:       "Error",
 				Description: err.Error(),
-				InputMessageContent: &tgbotapi.InputTextMessageContent{
-					Text:        fmt.Sprintf("❌ Error: %s", err.Error()),
+				InputMessageContent: &tg.InputTextMessageContent{
+					MessageText: fmt.Sprintf("❌ Error: %s", err.Error()),
 					ParseMode:   "MarkdownV2",
 				},
 			},
@@ -170,22 +165,21 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 	}
 
 	if len(resources) == 0 {
-		return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResultArticle{
+		return h.answerInlineQuery(ctx, inlineQuery.ID, []tg.InlineQueryResultArticle{
 			{
 				Type:        "article",
 				ID:          "empty",
 				Title:       "No resources found",
 				Description: fmt.Sprintf("No %s in namespace %s", resourceType, namespace),
-				InputMessageContent: &tgbotapi.InputTextMessageContent{
-					Text:        fmt.Sprintf("📭 No %s found in namespace `%s`", resourceType, namespace),
+				InputMessageContent: &tg.InputTextMessageContent{
+					MessageText: fmt.Sprintf("📭 No %s found in namespace `%s`", resourceType, namespace),
 					ParseMode:   "MarkdownV2",
 				},
 			},
 		})
 	}
 
-	// Build results (max 50 for inline query)
-	results := make([]tgbotapi.InlineQueryResultArticle, 0, min(len(resources), 50))
+	results := make([]tg.InlineQueryResultArticle, 0, min(len(resources), 50))
 	for _, r := range resources {
 		if len(results) >= 50 {
 			break
@@ -217,22 +211,22 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 
 		text := formatters.FormatResource(&r, "wide")
 
-		results = append(results, tgbotapi.InlineQueryResultArticle{
+		results = append(results, tg.InlineQueryResultArticle{
 			Type:        "article",
 			ID:          "resource-" + r.Name,
 			Title:       fmt.Sprintf("%s %s", statusIcon, displayName),
 			Description: fmt.Sprintf("NS: %s | Status: %s", ns, r.Status),
-			InputMessageContent: &tgbotapi.InputTextMessageContent{
-				Text:      "```\n" + text + "\n```",
-				ParseMode: "MarkdownV2",
+			InputMessageContent: &tg.InputTextMessageContent{
+				MessageText: "```\n" + text + "\n```",
+				ParseMode:   "MarkdownV2",
 			},
 		})
 	}
 
-	return h.answerInlineQuery(inlineQuery, results)
+	return h.answerInlineQuery(ctx, inlineQuery.ID, results)
 }
 
-func (h *InlineQueryHandler) showInlineHelp(inlineQuery *tgbotapi.InlineQuery) error {
+func (h *InlineQueryHandler) showInlineHelp(inlineQuery *tg.InlineQuery) error {
 	help := `📦 *k8s-telegram-bot Inline Query Help*
 
 *Usage:* @bot <resource> [name] [flags]
@@ -253,33 +247,55 @@ func (h *InlineQueryHandler) showInlineHelp(inlineQuery *tgbotapi.InlineQuery) e
 @bot services -l app=nginx
 @bot nodes`
 
-	return h.answerInlineQuery(inlineQuery, []tgbotapi.InlineQueryResultArticle{
+	return h.answerInlineQuery(context.Background(), inlineQuery.ID, []tg.InlineQueryResultArticle{
 		{
 			Type:        "article",
 			ID:          "help",
 			Title:       "📖 Inline Query Help",
 			Description: "Tap to see usage examples",
-			InputMessageContent: &tgbotapi.InputTextMessageContent{
-				Text:      help,
-				ParseMode: "MarkdownV2",
+			InputMessageContent: &tg.InputTextMessageContent{
+				MessageText: help,
+				ParseMode:   "MarkdownV2",
 			},
 		},
 	})
 }
 
-func (h *InlineQueryHandler) answerInlineQuery(inlineQuery *tgbotapi.InlineQuery, results []tgbotapi.InlineQueryResultArticle) error {
-	iface := make([]interface{}, len(results))
+func (h *InlineQueryHandler) answerInlineQuery(ctx context.Context, inlineQueryID string, results []tg.InlineQueryResultArticle) error {
+	modelResults := make([]botmodels.InlineQueryResult, len(results))
 	for i, r := range results {
-		iface[i] = r
+		var imc botmodels.InputMessageContent
+		if r.InputMessageContent != nil {
+			if textContent, ok := r.InputMessageContent.(*tg.InputTextMessageContent); ok {
+				imc = toModelInputMessageContent(textContent)
+			}
+		}
+		modelResults[i] = &botmodels.InlineQueryResultArticle{
+			ID:                  r.ID,
+			Title:               r.Title,
+			Description:         r.Description,
+			InputMessageContent: imc,
+		}
 	}
-	answer := tgbotapi.InlineConfig{
-		InlineQueryID: inlineQuery.ID,
-		Results:      iface,
-		CacheTime:    60,
-		IsPersonal:   true,
+	params := &bottg.AnswerInlineQueryParams{
+		InlineQueryID: inlineQueryID,
+		Results:       modelResults,
+		CacheTime:     60,
+		IsPersonal:    true,
 	}
-	_, err := h.getAPI().Request(answer)
+	libBot := h.bot.API().(*bottg.Bot)
+	_, err := libBot.AnswerInlineQuery(ctx, params)
 	return err
+}
+
+func toModelInputMessageContent(c *tg.InputTextMessageContent) botmodels.InputMessageContent {
+	if c == nil {
+		return nil
+	}
+	return &botmodels.InputTextMessageContent{
+		MessageText: c.MessageText,
+		ParseMode:   botmodels.ParseMode(c.ParseMode),
+	}
 }
 
 func min(a, b int) int {

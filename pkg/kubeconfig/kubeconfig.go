@@ -12,46 +12,46 @@ import (
 
 // ContextInfo represents a kubeconfig context with full details
 type ContextInfo struct {
-	Name           string `json:"name" yaml:"name"`
-	Cluster        string `json:"cluster" yaml:"cluster"`
-	ClusterServer  string `json:"cluster_server" yaml:"cluster_server"`
-	User           string `json:"user" yaml:"user"`
-	Namespace      string `json:"namespace" yaml:"namespace"`
-	Current        bool   `json:"current" yaml:"current"`
-	AuthInfo       *AuthInfo `json:"auth_info,omitempty" yaml:"auth_info,omitempty"`
+	Name          string    `json:"name" yaml:"name"`
+	Cluster       string    `json:"cluster" yaml:"cluster"`
+	ClusterServer string    `json:"cluster_server" yaml:"cluster_server"`
+	User          string    `json:"user" yaml:"user"`
+	Namespace     string    `json:"namespace" yaml:"namespace"`
+	Current       bool      `json:"current" yaml:"current"`
+	AuthInfo      *AuthInfo `json:"auth_info,omitempty" yaml:"auth_info,omitempty"`
 }
 
 // AuthInfo represents authentication information for a user
 type AuthInfo struct {
-	Name           string `json:"name,omitempty" yaml:"name,omitempty"`
-	Username        string `json:"username,omitempty" yaml:"username,omitempty"`
-	Password        string `json:"password,omitempty" yaml:"password,omitempty"`
-	Token           string `json:"token,omitempty" yaml:"token,omitempty"`
-	ClientCert      string `json:"client_cert,omitempty" yaml:"client_cert,omitempty"`
-	ClientKey       string `json:"client_key,omitempty" yaml:"client_key,omitempty"`
-	ClientCertData  string `json:"client_cert_data,omitempty" yaml:"client_cert_data,omitempty"`
-	ClientKeyData   string `json:"client_key_data,omitempty" yaml:"client_key_data,omitempty"`
-	ExecCommand     string `json:"exec_command,omitempty" yaml:"exec_command,omitempty"`
-	ExecArgs        []string `json:"exec_args,omitempty" yaml:"exec_args,omitempty"`
-	ExecEnv         []string `json:"exec_env,omitempty" yaml:"exec_env,omitempty"`
+	Name           string   `json:"name,omitempty" yaml:"name,omitempty"`
+	Username       string   `json:"username,omitempty" yaml:"username,omitempty"`
+	Password       string   `json:"password,omitempty" yaml:"password,omitempty"`
+	Token          string   `json:"token,omitempty" yaml:"token,omitempty"`
+	ClientCert     string   `json:"client_cert,omitempty" yaml:"client_cert,omitempty"`
+	ClientKey      string   `json:"client_key,omitempty" yaml:"client_key,omitempty"`
+	ClientCertData string   `json:"client_cert_data,omitempty" yaml:"client_cert_data,omitempty"`
+	ClientKeyData  string   `json:"client_key_data,omitempty" yaml:"client_key_data,omitempty"`
+	ExecCommand    string   `json:"exec_command,omitempty" yaml:"exec_command,omitempty"`
+	ExecArgs       []string `json:"exec_args,omitempty" yaml:"exec_args,omitempty"`
+	ExecEnv        []string `json:"exec_env,omitempty" yaml:"exec_env,omitempty"`
 }
 
 // ClusterInfo represents cluster information
 type ClusterInfo struct {
-	Name                   string `json:"name" yaml:"name"`
-	Server                 string `json:"server" yaml:"server"`
-	CertificateAuthority   string `json:"certificate_authority,omitempty" yaml:"certificate_authority,omitempty"`
+	Name                     string `json:"name" yaml:"name"`
+	Server                   string `json:"server" yaml:"server"`
+	CertificateAuthority     string `json:"certificate_authority,omitempty" yaml:"certificate_authority,omitempty"`
 	CertificateAuthorityData string `json:"certificate_authority_data,omitempty" yaml:"certificate_authority_data,omitempty"`
-	InsecureSkipTLSVerify  bool   `json:"insecure_skip_tls_verify" yaml:"insecure_skip_tls_verify"`
+	InsecureSkipTLSVerify    bool   `json:"insecure_skip_tls_verify" yaml:"insecure_skip_tls_verify"`
 }
 
 // KubeConfig represents the full parsed kubeconfig
 type KubeConfig struct {
-	Contexts       []ContextInfo  `json:"contexts" yaml:"contexts"`
-	Clusters       []ClusterInfo  `json:"clusters" yaml:"clusters"`
-	Users          []AuthInfo     `json:"users" yaml:"users"`
-	CurrentContext string         `json:"current_context" yaml:"current_context"`
-	ConfigFile     string         `json:"config_file" yaml:"config_file"`
+	Contexts       []ContextInfo        `json:"contexts" yaml:"contexts"`
+	Clusters       []ClusterInfo        `json:"clusters" yaml:"clusters"`
+	Users          []AuthInfo           `json:"users" yaml:"users"`
+	CurrentContext string               `json:"current_context" yaml:"current_context"`
+	ConfigFile     string               `json:"config_file" yaml:"config_file"`
 	Raw            *clientcmdapi.Config `json:"-" yaml:"-"`
 }
 
@@ -127,11 +127,11 @@ func ParseKubeconfig(configPath string) (*KubeConfig, error) {
 	// Parse clusters
 	for name, cluster := range rawConfig.Clusters {
 		kubeConfig.Clusters = append(kubeConfig.Clusters, ClusterInfo{
-			Name:                      name,
-			Server:                    cluster.Server,
-			CertificateAuthority:      cluster.CertificateAuthority,
-			CertificateAuthorityData:  string(cluster.CertificateAuthorityData),
-			InsecureSkipTLSVerify:     cluster.InsecureSkipTLSVerify,
+			Name:                     name,
+			Server:                   cluster.Server,
+			CertificateAuthority:     cluster.CertificateAuthority,
+			CertificateAuthorityData: string(cluster.CertificateAuthorityData),
+			InsecureSkipTLSVerify:    cluster.InsecureSkipTLSVerify,
 		})
 	}
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
 )
 
@@ -16,7 +16,7 @@ func NewVersionHandler(b types.BotInterface) *VersionHandler {
 	return &VersionHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *VersionHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *VersionHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	version, err := h.getK8sClient().GetServerVersion(ctx)
 	if err != nil {
 		version = "unknown"

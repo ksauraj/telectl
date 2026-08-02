@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/ksauraj/telectl/internal/k8s"
+	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/utils/formatters"
+	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"go.uber.org/zap"
 )
+
 type TopHandler struct {
 	*BaseHandler
 }
@@ -21,7 +22,7 @@ func NewTopHandler(b types.BotInterface) *TopHandler {
 	return &TopHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *TopHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *TopHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	if len(args) == 0 {
 		h.sendResponse(msg.Chat.ID, "Usage: /top pods|nodes [-n namespace] [--sort cpu|memory]")
 		return nil
@@ -43,7 +44,7 @@ func (h *TopHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []s
 	}
 }
 
-func (h *TopHandler) topPods(ctx context.Context, msg *tgbotapi.Message, client *k8s.Client, namespace string, args []string) error {
+func (h *TopHandler) topPods(ctx context.Context, msg *tg.Message, client *k8s.Client, namespace string, args []string) error {
 	// Try to get metrics from metrics.k8s.io API
 	resources, err := client.ListResources(ctx, schema.GroupVersionResource{
 		Group:    "metrics.k8s.io",
@@ -75,7 +76,7 @@ func (h *TopHandler) topPods(ctx context.Context, msg *tgbotapi.Message, client 
 	return nil
 }
 
-func (h *TopHandler) topNodes(ctx context.Context, msg *tgbotapi.Message, client *k8s.Client, args []string) error {
+func (h *TopHandler) topNodes(ctx context.Context, msg *tg.Message, client *k8s.Client, args []string) error {
 	resources, err := client.ListResources(ctx, schema.GroupVersionResource{
 		Group:    "metrics.k8s.io",
 		Version:  "v1beta1",
@@ -108,7 +109,7 @@ func NewEventsHandler(b types.BotInterface) *EventsHandler {
 	return &EventsHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *EventsHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *EventsHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	namespace := h.getNamespace(session, args, h.getConfig().Kubernetes.DefaultNamespace)
 
 	client := h.getK8sClient()
@@ -141,7 +142,7 @@ func NewWatchHandler(b types.BotInterface) *WatchHandler {
 	return &WatchHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *WatchHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *WatchHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	if len(args) == 0 {
 		h.sendResponse(msg.Chat.ID, "Usage: /watch <resource> [name] [-n namespace]")
 		return nil
@@ -186,4 +187,3 @@ func (h *WatchHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args [
 func (h *WatchHandler) sendResponse(chatID int64, text string) {
 	h.bot.SendLongMessage(chatID, text)
 }
-

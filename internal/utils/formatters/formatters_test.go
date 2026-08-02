@@ -11,12 +11,12 @@ import (
 
 func TestFormatResource(t *testing.T) {
 	resource := &k8s.ResourceInfo{
-		Name:      "test-pod",
-		Namespace: "default",
-		Kind:      "Pod",
+		Name:       "test-pod",
+		Namespace:  "default",
+		Kind:       "Pod",
 		APIVersion: "v1",
-		Status:    "Running",
-		CreatedAt: metav1Time(time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)),
+		Status:     "Running",
+		CreatedAt:  metav1Time(time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)),
 		Labels: map[string]string{
 			"app": "nginx",
 			"env": "prod",
@@ -55,22 +55,22 @@ func TestFormatResource(t *testing.T) {
 func TestFormatResourceList(t *testing.T) {
 	resources := []k8s.ResourceInfo{
 		{
-			Name:      "pod-1",
-			Namespace: "default",
-			Kind:      "Pod",
+			Name:       "pod-1",
+			Namespace:  "default",
+			Kind:       "Pod",
 			APIVersion: "v1",
-			Status:    "Running",
-			CreatedAt: metav1Time(time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)),
-			Labels: map[string]string{"app": "nginx"},
+			Status:     "Running",
+			CreatedAt:  metav1Time(time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)),
+			Labels:     map[string]string{"app": "nginx"},
 		},
 		{
-			Name:      "pod-2",
-			Namespace: "kube-system",
-			Kind:      "Pod",
+			Name:       "pod-2",
+			Namespace:  "kube-system",
+			Kind:       "Pod",
 			APIVersion: "v1",
-			Status:    "Running",
-			CreatedAt: metav1Time(time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC)),
-			Labels: map[string]string{"app": "coredns"},
+			Status:     "Running",
+			CreatedAt:  metav1Time(time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC)),
+			Labels:     map[string]string{"app": "coredns"},
 		},
 	}
 
@@ -126,9 +126,9 @@ func TestFormatAge(t *testing.T) {
 
 func TestFormatLabels(t *testing.T) {
 	labels := map[string]string{
-		"app":   "nginx",
-		"env":   "prod",
-		"tier":  "frontend",
+		"app":  "nginx",
+		"env":  "prod",
+		"tier": "frontend",
 	}
 
 	output := formatLabels(labels)
@@ -176,9 +176,9 @@ func TestTruncateString(t *testing.T) {
 
 func TestParseResourceArg(t *testing.T) {
 	tests := []struct {
-		input    string
-		resource string
-		name     string
+		input     string
+		resource  string
+		name      string
 		namespace string
 	}{
 		{"pod/my-pod", "pod", "my-pod", ""},

@@ -24,7 +24,7 @@ func TestParseCallbackData(t *testing.T) {
 			name: "resource types",
 			data: "menu:resource:types",
 			expected: &CallbackAction{
-				Type:  "resource",
+				Type:   "resource",
 				Action: "types",
 			},
 		},
@@ -75,21 +75,21 @@ func TestParseCallbackData(t *testing.T) {
 			name: "action logs with container",
 			data: "menu:action:logs:pods:default:nginx-1:nginx",
 			expected: &CallbackAction{
-				Type:        "action",
-				Action:      "logs",
+				Type:         "action",
+				Action:       "logs",
 				ResourceType: "pods",
-				Namespace:   "default",
-				Name:        "nginx-1",
-				Container:   "nginx",
+				Namespace:    "default",
+				Name:         "nginx-1",
+				Container:    "nginx",
 			},
 		},
 		{
 			name: "context switch",
 			data: "menu:ctx:switch:my-context",
 			expected: &CallbackAction{
-				Type:  "ctx",
+				Type:   "ctx",
 				Action: "switch",
-				Name:  "my-context",
+				Name:   "my-context",
 			},
 		},
 		{
@@ -105,7 +105,7 @@ func TestParseCallbackData(t *testing.T) {
 			name: "operations restart",
 			data: "menu:ops:restart",
 			expected: &CallbackAction{
-				Type:  "ops",
+				Type:   "ops",
 				Action: "restart",
 			},
 		},
@@ -113,7 +113,7 @@ func TestParseCallbackData(t *testing.T) {
 			name: "settings namespace",
 			data: "menu:settings:namespace",
 			expected: &CallbackAction{
-				Type:  "settings",
+				Type:   "settings",
 				Action: "namespace",
 			},
 		},
@@ -125,8 +125,8 @@ func TestParseCallbackData(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid prefix",
-			data: "invalid:data",
+			name:     "invalid prefix",
+			data:     "invalid:data",
 			expected: nil,
 		},
 	}
@@ -160,7 +160,7 @@ func TestMenuBuilder_GetBotCommands(t *testing.T) {
 
 	commands := mb.GetBotCommands()
 	assert.Len(t, commands, 8)
-	
+
 	expectedCommands := []string{"resources", "logs", "exec", "contexts", "monitor", "operations", "settings", "help"}
 	for i, cmd := range expectedCommands {
 		assert.Equal(t, cmd, commands[i].Command)
@@ -169,10 +169,10 @@ func TestMenuBuilder_GetBotCommands(t *testing.T) {
 
 func TestMenuBuilder_IsMenuEnabled(t *testing.T) {
 	tests := []struct {
-		name           string
-		enableMenuBtn  bool
-		enableReplyKb  bool
-		expected       bool
+		name          string
+		enableMenuBtn bool
+		enableReplyKb bool
+		expected      bool
 	}{
 		{"both enabled", true, true, true},
 		{"menu button only", true, false, true},
@@ -184,7 +184,7 @@ func TestMenuBuilder_IsMenuEnabled(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{
 				Bot: config.BotConfig{
-					EnableMenuButton:   tt.enableMenuBtn,
+					EnableMenuButton:    tt.enableMenuBtn,
 					EnableReplyKeyboard: tt.enableReplyKb,
 				},
 			}

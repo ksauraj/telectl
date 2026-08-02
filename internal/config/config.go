@@ -18,24 +18,24 @@ type Config struct {
 }
 
 type TelegramConfig struct {
-	BotToken       string   `mapstructure:"bot_token"`
-	AllowedUserIDs []int64  `mapstructure:"allowed_user_ids"`
-	AdminUserIDs   []int64  `mapstructure:"admin_user_ids"`
-	ParseMode      string   `mapstructure:"parse_mode"`
-	WebhookURL     string   `mapstructure:"webhook_url"`
-	WebhookPort    int      `mapstructure:"webhook_port"`
+	BotToken       string  `mapstructure:"bot_token"`
+	AllowedUserIDs []int64 `mapstructure:"allowed_user_ids"`
+	AdminUserIDs   []int64 `mapstructure:"admin_user_ids"`
+	ParseMode      string  `mapstructure:"parse_mode"`
+	WebhookURL     string  `mapstructure:"webhook_url"`
+	WebhookPort    int     `mapstructure:"webhook_port"`
 }
 
 type KubernetesConfig struct {
-	KubeconfigPath     string   `mapstructure:"kubeconfig_path"`
-	DefaultNamespace   string   `mapstructure:"default_namespace"`
-	Context            string   `mapstructure:"context"`
-	Timeout            int      `mapstructure:"timeout"`
-	DryRun             bool     `mapstructure:"dry_run"`
-	ImpersonateUser    string   `mapstructure:"impersonate_user"`
-	ImpersonateGroups  []string `mapstructure:"impersonate_groups"`
-	Burst              int      `mapstructure:"burst"`
-	QPS                float32  `mapstructure:"qps"`
+	KubeconfigPath    string   `mapstructure:"kubeconfig_path"`
+	DefaultNamespace  string   `mapstructure:"default_namespace"`
+	Context           string   `mapstructure:"context"`
+	Timeout           int      `mapstructure:"timeout"`
+	DryRun            bool     `mapstructure:"dry_run"`
+	ImpersonateUser   string   `mapstructure:"impersonate_user"`
+	ImpersonateGroups []string `mapstructure:"impersonate_groups"`
+	Burst             int      `mapstructure:"burst"`
+	QPS               float32  `mapstructure:"qps"`
 }
 
 type LoggingConfig struct {
@@ -52,9 +52,9 @@ type BotConfig struct {
 	AllowedCommands  []string `mapstructure:"allowed_commands"`
 
 	// Menu system
-	EnableMenuButton   bool `mapstructure:"enable_menu_button"`
+	EnableMenuButton    bool `mapstructure:"enable_menu_button"`
 	EnableReplyKeyboard bool `mapstructure:"enable_reply_keyboard"`
-	MenuPageSize       int  `mapstructure:"menu_page_size"`
+	MenuPageSize        int  `mapstructure:"menu_page_size"`
 }
 
 var cfg *Config
@@ -231,13 +231,13 @@ func CreateDefaultConfig(path string) error {
 			Output: "stdout",
 		},
 		Bot: BotConfig{
-			MaxMessageLength:   4096,
-			CommandPrefix:      "/",
-			EnableMarkdown:     true,
-			RateLimit:          30,
-			EnableMenuButton:   true,
+			MaxMessageLength:    4096,
+			CommandPrefix:       "/",
+			EnableMarkdown:      true,
+			RateLimit:           30,
+			EnableMenuButton:    true,
 			EnableReplyKeyboard: true,
-			MenuPageSize:       10,
+			MenuPageSize:        10,
 			AllowedCommands: []string{
 				"start", "help", "version",
 				"get", "describe", "logs", "exec", "port-forward",

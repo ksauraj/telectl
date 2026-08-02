@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/ksauraj/telectl/internal/config"
 	"github.com/ksauraj/telectl/internal/k8s"
 	"github.com/ksauraj/telectl/internal/menus"
+	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/utils/formatters"
 	"go.uber.org/zap"
 )
 
 type CommandHandler interface {
-	Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error
+	Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error
 }
 
 type BaseHandler struct {
@@ -58,7 +58,7 @@ func (h *BaseHandler) sendResponse(chatID int64, text string) {
 }
 
 func (h *BaseHandler) sendError(chatID int64, err error) {
-	h.bot.SendMessage(chatID, fmt.Sprintf("❌ Error: %s", err.Error()))
+	h.bot.SendText(chatID, fmt.Sprintf("❌ Error: %s", err.Error()))
 }
 
 func (h *BaseHandler) sendFormatted(chatID int64, resources []k8s.ResourceInfo, format string, wide bool) {
@@ -147,9 +147,9 @@ func (h *BaseHandler) getConfig() *config.Config {
 	return nil
 }
 
-// getAPI returns the typed *tgbotapi.BotAPI from the bot.
-func (h *BaseHandler) getAPI() *tgbotapi.BotAPI {
-	if a, ok := h.bot.API().(*tgbotapi.BotAPI); ok {
+// getAPI returns the typed *tg.Bot from the bot.
+func (h *BaseHandler) getAPI() *tg.Bot {
+	if a, ok := h.bot.API().(*tg.Bot); ok {
 		return a
 	}
 	return nil

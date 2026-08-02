@@ -13,12 +13,12 @@ import (
 )
 
 var (
-	cfgFile     string
-	botToken    string
-	kubeconfig  string
-	allowedIDs  string
-	logLevel    string
-	dryRun      bool
+	cfgFile    string
+	botToken   string
+	kubeconfig string
+	allowedIDs string
+	logLevel   string
+	dryRun     bool
 )
 
 var rootCmd = &cobra.Command{

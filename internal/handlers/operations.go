@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
 )
 
@@ -18,7 +18,7 @@ func NewRestartHandler(b types.BotInterface) *RestartHandler {
 	return &RestartHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *RestartHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *RestartHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	if len(args) < 2 {
 		h.sendResponse(msg.Chat.ID, "Usage: /restart deployment <name> [-n namespace]")
 		return nil
@@ -61,7 +61,7 @@ func NewScaleHandler(b types.BotInterface) *ScaleHandler {
 	return &ScaleHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *ScaleHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *ScaleHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	if len(args) < 3 {
 		h.sendResponse(msg.Chat.ID, "Usage: /scale deployment <name> <replicas> [-n namespace]")
 		return nil

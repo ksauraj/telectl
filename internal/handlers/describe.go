@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/k8s"
+	"github.com/ksauraj/telectl/internal/tg"
+	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/utils/formatters"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -20,7 +20,7 @@ func NewDescribeHandler(b types.BotInterface) *DescribeHandler {
 	return &DescribeHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *DescribeHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *DescribeHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	if len(args) < 2 {
 		h.sendResponse(msg.Chat.ID, "Usage: /describe <resource> <name> [-n namespace]")
 		return nil
@@ -52,7 +52,6 @@ func (h *DescribeHandler) Handle(ctx context.Context, msg *tgbotapi.Message, arg
 	h.sendSingleResource(msg.Chat.ID, resource, "wide")
 	return nil
 }
-
 
 func (h *DescribeHandler) sendResponse(chatID int64, text string) {
 	h.bot.SendLongMessage(chatID, text)

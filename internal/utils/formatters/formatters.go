@@ -268,6 +268,7 @@ func columnsForKind(kind string, wide bool) []tableColumn {
 			base = append(base,
 				tableColumn{"NODE", func(r *k8s.ResourceInfo) string { return podNode(r) }},
 				tableColumn{"IP", func(r *k8s.ResourceInfo) string { return podIP(r) }},
+				tableColumn{"LABELS", func(r *k8s.ResourceInfo) string { return formatLabels(r.Labels) }},
 			)
 		}
 		return base
@@ -873,4 +874,64 @@ func FormatContexts(contexts []kubeconfig.ContextInfo) string {
 	}
 
 	return sb.String()
+}
+
+// ---------- HTML Rich Formatting (for Telegram HTML parse mode) ----------
+
+// FormatResourceAsHTML renders resources as a Telegram-compatible HTML table.
+func FormatResourceAsHTML(resources []k8s.ResourceInfo, kind string) string {
+	if len(resources) == 0 {
+		return "<i>No resources found</i>"
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("<b>📦 %s (%d)</b>\n\n", kind, len(resources)))
+	sb.WriteString("<pre>")
+	sb.WriteString(htmlTableHeader(kind))
+	for _, r := range resources {
+		sb.WriteString(htmlRow(r, kind))
+	}
+	sb.WriteString("</pre>")
+	return sb.String()
+}
+
+func htmlTableHeader(kind string) string {
+	switch kind {
+	case "Pod":
+		return "NAME                    | NS    | READY | STATUS     | RESTARTS | AGE\n"
+	case "Deployment":
+		return "NAME              | NS    | READY | UP-TO-DATE | AVAILABLE | AGE\n"
+	default:
+		return "NAME        | NS    | STATUS | AGE\n"
+	}
+}
+
+func htmlRow(r k8s.ResourceInfo, kind string) string {
+	name := truncate(r.Name, 42)
+	ns := r.Namespace
+	if ns == "" {
+		ns = "-"
+	}
+	emoji := StatusEmoji(r.Status)
+	status := emptyToDash(r.Status)
+	age := formatAge(r.CreatedAt.Time)
+	switch kind {
+	case "Pod":
+		ready := podReady(&r)
+		restarts := strconv.Itoa(podRestarts(&r))
+		return fmt.Sprintf("%s | %s | %s | %s %s | %s | %s\n", name, ns, ready, emoji, status, restarts, age)
+	case "Deployment":
+		ready := deployReady(&r)
+		up := deployUpToDate(&r)
+		avail := deployAvailable(&r)
+		return fmt.Sprintf("%s | %s | %s | %s | %s | %s\n", name, ns, ready, up, avail, age)
+	default:
+		return fmt.Sprintf("%s | %s | %s %s | %s\n", name, ns, emoji, status, age)
+	}
+}
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max-1] + "…"
 }

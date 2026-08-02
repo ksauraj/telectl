@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/k8s"
+	"github.com/ksauraj/telectl/internal/tg"
+	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/utils/formatters"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -22,7 +22,7 @@ func NewGetHandler(b types.BotInterface) *GetHandler {
 
 var resourceMap = types.ResourceMap
 
-func (h *GetHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *GetHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	if len(args) == 0 {
 		h.sendResponse(msg.Chat.ID, "Usage: /get <resource> [name] [-n namespace] [-o format] [-l selector]")
 		return nil

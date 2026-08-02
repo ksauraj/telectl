@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/k8s"
+	"github.com/ksauraj/telectl/internal/tg"
+	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/utils/formatters"
 )
 
@@ -22,7 +22,7 @@ func NewLogsHandler(b types.BotInterface) *LogsHandler {
 	return &LogsHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *LogsHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *LogsHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	if len(args) == 0 {
 		h.sendResponse(msg.Chat.ID, "Usage: /logs <pod> [-n namespace] [-c container] [-f] [-p] [--tail N] [--since TIME]")
 		return nil
@@ -131,7 +131,7 @@ func (h *LogsHandler) streamLogs(ctx context.Context, chatID int64, client *k8s.
 	}
 
 	formatted := formatters.FormatPodLogs(string(logs), 200)
-	h.bot.SendMessage(chatID, fmt.Sprintf("📋 Logs for %s/%s (last 200 lines):\n```\n%s\n```", opts.Namespace, opts.PodName, formatted))
+	h.bot.SendText(chatID, fmt.Sprintf("📋 Logs for %s/%s (last 200 lines):\n```\n%s\n```", opts.Namespace, opts.PodName, formatted))
 	return nil
 }
 

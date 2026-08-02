@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ksauraj/telectl/pkg/kubeconfig"
+	"go.uber.org/zap"
 	authv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,62 +24,61 @@ import (
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/client-go/transport/spdy"
-	"go.uber.org/zap"
 )
 
 type Client struct {
-	clientset    *kubernetes.Clientset
+	clientset     *kubernetes.Clientset
 	dynamicClient dynamic.Interface
-	restConfig   *rest.Config
-	kubeconfig   *kubeconfig.KubeConfig
-	logger       *zap.Logger
-	dryRun       bool
+	restConfig    *rest.Config
+	kubeconfig    *kubeconfig.KubeConfig
+	logger        *zap.Logger
+	dryRun        bool
 }
 
 type PodLogOptions struct {
-	Namespace     string
-	PodName       string
-	Container     string
-	Follow        bool
-	Previous      bool
-	Timestamps    bool
-	TailLines     *int64
-	LimitBytes    *int64
-	SinceSeconds  *int64
-	SinceTime     *metav1.Time
+	Namespace    string
+	PodName      string
+	Container    string
+	Follow       bool
+	Previous     bool
+	Timestamps   bool
+	TailLines    *int64
+	LimitBytes   *int64
+	SinceSeconds *int64
+	SinceTime    *metav1.Time
 }
 
 type ExecOptions struct {
-	Namespace  string
-	PodName    string
-	Container  string
-	Command    []string
-	Stdin      io.Reader
-	Stdout     io.Writer
-	Stderr     io.Writer
-	TTY        bool
+	Namespace string
+	PodName   string
+	Container string
+	Command   []string
+	Stdin     io.Reader
+	Stdout    io.Writer
+	Stderr    io.Writer
+	TTY       bool
 }
 
 type PortForwardOptions struct {
-	Namespace  string
-	PodName    string
-	Ports      []string
-	Addresses  []string
-	StopChan   chan struct{}
-	ReadyChan  chan struct{}
-	Stdout     io.Writer
-	Stderr     io.Writer
+	Namespace string
+	PodName   string
+	Ports     []string
+	Addresses []string
+	StopChan  chan struct{}
+	ReadyChan chan struct{}
+	Stdout    io.Writer
+	Stderr    io.Writer
 }
 
 type ResourceInfo struct {
-	Name        string            `json:"name"`
-	Namespace   string            `json:"namespace"`
-	Kind        string            `json:"kind"`
-	APIVersion  string            `json:"api_version"`
-	Labels      map[string]string `json:"labels"`
-	Annotations map[string]string `json:"annotations"`
-	CreatedAt   metav1.Time       `json:"created_at"`
-	Status      string            `json:"status"`
+	Name        string                 `json:"name"`
+	Namespace   string                 `json:"namespace"`
+	Kind        string                 `json:"kind"`
+	APIVersion  string                 `json:"api_version"`
+	Labels      map[string]string      `json:"labels"`
+	Annotations map[string]string      `json:"annotations"`
+	CreatedAt   metav1.Time            `json:"created_at"`
+	Status      string                 `json:"status"`
 	Details     map[string]interface{} `json:"details,omitempty"`
 }
 
@@ -120,12 +120,12 @@ func NewClient(kubeConfigPath, context string, dryRun bool, logger *zap.Logger) 
 	}
 
 	return &Client{
-		clientset:    clientset,
+		clientset:     clientset,
 		dynamicClient: dynamicClient,
-		restConfig:   restConfig,
-		kubeconfig:   kc,
-		logger:       logger,
-		dryRun:       dryRun,
+		restConfig:    restConfig,
+		kubeconfig:    kc,
+		logger:        logger,
+		dryRun:        dryRun,
 	}, nil
 }
 

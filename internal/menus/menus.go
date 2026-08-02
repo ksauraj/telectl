@@ -1,9 +1,9 @@
 package menus
 
 import (
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/ksauraj/telectl/internal/config"
 	"github.com/ksauraj/telectl/internal/k8s"
+	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/pkg/kubeconfig"
 )
 
@@ -21,16 +21,16 @@ func NewMenuBuilder(cfg *config.Config) *MenuBuilder {
 // ============================================================================
 
 // GetBotCommands returns the list of commands for the bot menu button
-func (mb *MenuBuilder) GetBotCommands() []tgbotapi.BotCommand {
-	return []tgbotapi.BotCommand{
-		{Command: "resources", Description: "📦 Browse Resources"},
-		{Command: "logs", Description: "📋 View Logs"},
-		{Command: "exec", Description: "🖥️ Execute Commands"},
-		{Command: "contexts", Description: "⚙️ Manage Contexts"},
-		{Command: "monitor", Description: "📊 Monitoring"},
-		{Command: "operations", Description: "🔧 Operations"},
-		{Command: "settings", Description: "⚙️ Settings"},
-		{Command: "help", Description: "❓ Help & Commands"},
+func (mb *MenuBuilder) GetBotCommands() []tg.BotCommand {
+	return []tg.BotCommand{
+		tg.BotCommand{Command: "resources", Description: "📦 Browse Resources"},
+		tg.BotCommand{Command: "logs", Description: "📋 View Logs"},
+		tg.BotCommand{Command: "exec", Description: "🖥️ Execute Commands"},
+		tg.BotCommand{Command: "contexts", Description: "⚙️ Manage Contexts"},
+		tg.BotCommand{Command: "monitor", Description: "📊 Monitoring"},
+		tg.BotCommand{Command: "operations", Description: "🔧 Operations"},
+		tg.BotCommand{Command: "settings", Description: "⚙️ Settings"},
+		tg.BotCommand{Command: "help", Description: "❓ Help & Commands"},
 	}
 }
 
@@ -39,22 +39,22 @@ func (mb *MenuBuilder) GetBotCommands() []tgbotapi.BotCommand {
 // ============================================================================
 
 // GetMainReplyKeyboard returns the main persistent reply keyboard
-func (mb *MenuBuilder) GetMainReplyKeyboard() tgbotapi.ReplyKeyboardMarkup {
-	keyboard := tgbotapi.NewReplyKeyboard(
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📦 Resources"),
-			tgbotapi.NewKeyboardButton("📋 Logs"),
-			tgbotapi.NewKeyboardButton("🖥️ Exec"),
+func (mb *MenuBuilder) GetMainReplyKeyboard() tg.ReplyKeyboardMarkup {
+	keyboard := tg.ReplyKeyboard(
+		tg.KeyboardButtonRow(
+			tg.KeyboardButtonText("📦 Resources"),
+			tg.KeyboardButtonText("📋 Logs"),
+			tg.KeyboardButtonText("🖥️ Exec"),
 		),
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("🔌 Port Forward"),
-			tgbotapi.NewKeyboardButton("⚙️ Contexts"),
-			tgbotapi.NewKeyboardButton("📊 Monitor"),
+		tg.KeyboardButtonRow(
+			tg.KeyboardButtonText("🔌 Port Forward"),
+			tg.KeyboardButtonText("⚙️ Contexts"),
+			tg.KeyboardButtonText("📊 Monitor"),
 		),
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("🔧 Operations"),
-			tgbotapi.NewKeyboardButton("⚙️ Settings"),
-			tgbotapi.NewKeyboardButton("❓ Help"),
+		tg.KeyboardButtonRow(
+			tg.KeyboardButtonText("🔧 Operations"),
+			tg.KeyboardButtonText("⚙️ Settings"),
+			tg.KeyboardButtonText("❓ Help"),
 		),
 	)
 	keyboard.ResizeKeyboard = true
@@ -64,27 +64,27 @@ func (mb *MenuBuilder) GetMainReplyKeyboard() tgbotapi.ReplyKeyboardMarkup {
 }
 
 // GetResourceTypeReplyKeyboard returns keyboard for resource type selection
-func (mb *MenuBuilder) GetResourceTypeReplyKeyboard() tgbotapi.ReplyKeyboardMarkup {
-	keyboard := tgbotapi.NewReplyKeyboard(
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📦 Pods"),
-			tgbotapi.NewKeyboardButton("🚀 Deployments"),
-			tgbotapi.NewKeyboardButton("🔌 Services"),
+func (mb *MenuBuilder) GetResourceTypeReplyKeyboard() tg.ReplyKeyboardMarkup {
+	keyboard := tg.ReplyKeyboard(
+		tg.KeyboardButtonRow(
+			tg.KeyboardButtonText("📦 Pods"),
+			tg.KeyboardButtonText("🚀 Deployments"),
+			tg.KeyboardButtonText("🔌 Services"),
 		),
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("📋 ReplicaSets"),
-			tgbotapi.NewKeyboardButton("📁 Namespaces"),
-			tgbotapi.NewKeyboardButton("🖥️ Nodes"),
+		tg.KeyboardButtonRow(
+			tg.KeyboardButtonText("📋 ReplicaSets"),
+			tg.KeyboardButtonText("📁 Namespaces"),
+			tg.KeyboardButtonText("🖥️ Nodes"),
 		),
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("⚙️ ConfigMaps"),
-			tgbotapi.NewKeyboardButton("🔐 Secrets"),
-			tgbotapi.NewKeyboardButton("💾 PVCs"),
+		tg.KeyboardButtonRow(
+			tg.KeyboardButtonText("⚙️ ConfigMaps"),
+			tg.KeyboardButtonText("🔐 Secrets"),
+			tg.KeyboardButtonText("💾 PVCs"),
 		),
-		tgbotapi.NewKeyboardButtonRow(
-			tgbotapi.NewKeyboardButton("🌐 Ingresses"),
-			tgbotapi.NewKeyboardButton("📅 Events"),
-			tgbotapi.NewKeyboardButton("🔙 Back"),
+		tg.KeyboardButtonRow(
+			tg.KeyboardButtonText("🌐 Ingresses"),
+			tg.KeyboardButtonText("📅 Events"),
+			tg.KeyboardButtonText("🔙 Back"),
 		),
 	)
 	keyboard.ResizeKeyboard = true
@@ -94,23 +94,23 @@ func (mb *MenuBuilder) GetResourceTypeReplyKeyboard() tgbotapi.ReplyKeyboardMark
 }
 
 // GetNamespaceReplyKeyboard returns keyboard for namespace selection
-func (mb *MenuBuilder) GetNamespaceReplyKeyboard(namespaces []string, currentNS string) tgbotapi.ReplyKeyboardMarkup {
-	var rows [][]tgbotapi.KeyboardButton
-	var currentRow []tgbotapi.KeyboardButton
+func (mb *MenuBuilder) GetNamespaceReplyKeyboard(namespaces []string, currentNS string) tg.ReplyKeyboardMarkup {
+	var rows [][]tg.KeyboardButton
+	var currentRow []tg.KeyboardButton
 
 	// Add "All Namespaces" button
-	currentRow = append(currentRow, tgbotapi.NewKeyboardButton("🌐 All Namespaces"))
+	currentRow = append(currentRow, tg.KeyboardButtonText("🌐 All Namespaces"))
 
 	for _, ns := range namespaces {
 		label := ns
 		if ns == currentNS {
 			label = "✅ " + ns
 		}
-		currentRow = append(currentRow, tgbotapi.NewKeyboardButton(label))
+		currentRow = append(currentRow, tg.KeyboardButtonText(label))
 
 		if len(currentRow) >= 3 {
 			rows = append(rows, currentRow)
-			currentRow = []tgbotapi.KeyboardButton{}
+			currentRow = []tg.KeyboardButton{}
 		}
 	}
 
@@ -118,12 +118,12 @@ func (mb *MenuBuilder) GetNamespaceReplyKeyboard(namespaces []string, currentNS 
 		rows = append(rows, currentRow)
 	}
 
-	rows = append(rows, tgbotapi.NewKeyboardButtonRow(
-		tgbotapi.NewKeyboardButton("🔙 Back"),
-		tgbotapi.NewKeyboardButton("➕ New Namespace"),
+	rows = append(rows, tg.KeyboardButtonRow(
+		tg.KeyboardButtonText("🔙 Back"),
+		tg.KeyboardButtonText("➕ New Namespace"),
 	))
 
-	keyboard := tgbotapi.NewReplyKeyboard(rows...)
+	keyboard := tg.ReplyKeyboard(rows...)
 	keyboard.ResizeKeyboard = true
 	keyboard.OneTimeKeyboard = false
 	keyboard.InputFieldPlaceholder = "Select namespace..."
@@ -135,37 +135,37 @@ func (mb *MenuBuilder) GetNamespaceReplyKeyboard(namespaces []string, currentNS 
 // ============================================================================
 
 // GetResourceTypeInlineKeyboard returns inline keyboard for resource type selection
-func (mb *MenuBuilder) GetResourceTypeInlineKeyboard() tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📦 Pods", "menu:resource:pods"),
-			tgbotapi.NewInlineKeyboardButtonData("🚀 Deployments", "menu:resource:deployments"),
-			tgbotapi.NewInlineKeyboardButtonData("🔌 Services", "menu:resource:services"),
+func (mb *MenuBuilder) GetResourceTypeInlineKeyboard() tg.InlineKeyboardMarkup {
+	return tg.InlineKeyboard(
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("📦 Pods", "menu:resource:pods"),
+			tg.InlineButtonData("🚀 Deployments", "menu:resource:deployments"),
+			tg.InlineButtonData("🔌 Services", "menu:resource:services"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📋 ReplicaSets", "menu:resource:replicasets"),
-			tgbotapi.NewInlineKeyboardButtonData("📁 Namespaces", "menu:resource:namespaces"),
-			tgbotapi.NewInlineKeyboardButtonData("🖥️ Nodes", "menu:resource:nodes"),
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("📋 ReplicaSets", "menu:resource:replicasets"),
+			tg.InlineButtonData("📁 Namespaces", "menu:resource:namespaces"),
+			tg.InlineButtonData("🖥️ Nodes", "menu:resource:nodes"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("⚙️ ConfigMaps", "menu:resource:configmaps"),
-			tgbotapi.NewInlineKeyboardButtonData("🔐 Secrets", "menu:resource:secrets"),
-			tgbotapi.NewInlineKeyboardButtonData("💾 PVCs", "menu:resource:pvcs"),
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("⚙️ ConfigMaps", "menu:resource:configmaps"),
+			tg.InlineButtonData("🔐 Secrets", "menu:resource:secrets"),
+			tg.InlineButtonData("💾 PVCs", "menu:resource:pvcs"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🌐 Ingresses", "menu:resource:ingresses"),
-			tgbotapi.NewInlineKeyboardButtonData("📅 Events", "menu:resource:events"),
-			tgbotapi.NewInlineKeyboardButtonData("💾 PVs", "menu:resource:pvs"),
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("🌐 Ingresses", "menu:resource:ingresses"),
+			tg.InlineButtonData("📅 Events", "menu:resource:events"),
+			tg.InlineButtonData("💾 PVs", "menu:resource:pvs"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔙 Main Menu", "menu:main"),
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("🔙 Main Menu", "menu:main"),
 		),
 	)
 }
 
 // GetResourceListInlineKeyboard returns paginated inline keyboard for resource list
-func (mb *MenuBuilder) GetResourceListInlineKeyboard(resourceType string, resources []k8s.ResourceInfo, page, pageSize int, namespace string) tgbotapi.InlineKeyboardMarkup {
-	var rows [][]tgbotapi.InlineKeyboardButton
+func (mb *MenuBuilder) GetResourceListInlineKeyboard(resourceType string, resources []k8s.ResourceInfo, page, pageSize int, namespace string) tg.InlineKeyboardMarkup {
+	var rows [][]tg.InlineKeyboardButton
 
 	start := page * pageSize
 	end := start + pageSize
@@ -175,9 +175,9 @@ func (mb *MenuBuilder) GetResourceListInlineKeyboard(resourceType string, resour
 
 	// Resource rows (2 per row for better mobile UX)
 	for i := start; i < end; i += 2 {
-		var row []tgbotapi.InlineKeyboardButton
+		var row []tg.InlineKeyboardButton
 		r1 := resources[i]
-		btn1 := tgbotapi.NewInlineKeyboardButtonData(
+		btn1 := tg.InlineButtonData(
 			mb.formatResourceButton(r1),
 			"menu:resource:view:"+resourceType+":"+r1.Namespace+":"+r1.Name,
 		)
@@ -185,7 +185,7 @@ func (mb *MenuBuilder) GetResourceListInlineKeyboard(resourceType string, resour
 
 		if i+1 < end {
 			r2 := resources[i+1]
-			btn2 := tgbotapi.NewInlineKeyboardButtonData(
+			btn2 := tg.InlineButtonData(
 				mb.formatResourceButton(r2),
 				"menu:resource:view:"+resourceType+":"+r2.Namespace+":"+r2.Name,
 			)
@@ -195,20 +195,20 @@ func (mb *MenuBuilder) GetResourceListInlineKeyboard(resourceType string, resour
 	}
 
 	// Pagination row
-	var paginationRow []tgbotapi.InlineKeyboardButton
+	var paginationRow []tg.InlineKeyboardButton
 	totalPages := (len(resources) + pageSize - 1) / pageSize
 
 	if page > 0 {
-		paginationRow = append(paginationRow, tgbotapi.NewInlineKeyboardButtonData("⬅️ Prev", "menu:resource:page:"+resourceType+":"+namespace+":"+intToString(page-1)))
+		paginationRow = append(paginationRow, tg.InlineButtonData("⬅️ Prev", "menu:resource:page:"+resourceType+":"+namespace+":"+intToString(page-1)))
 	}
 
-	paginationRow = append(paginationRow, tgbotapi.NewInlineKeyboardButtonData(
+	paginationRow = append(paginationRow, tg.InlineButtonData(
 		"📄 "+intToString(page+1)+"/"+intToString(totalPages),
 		"menu:noop",
 	))
 
 	if page+1 < totalPages {
-		paginationRow = append(paginationRow, tgbotapi.NewInlineKeyboardButtonData("Next ➡️", "menu:resource:page:"+resourceType+":"+namespace+":"+intToString(page+1)))
+		paginationRow = append(paginationRow, tg.InlineButtonData("Next ➡️", "menu:resource:page:"+resourceType+":"+namespace+":"+intToString(page+1)))
 	}
 
 	if len(paginationRow) > 1 {
@@ -216,13 +216,13 @@ func (mb *MenuBuilder) GetResourceListInlineKeyboard(resourceType string, resour
 	}
 
 	// Action row
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", "menu:resource:refresh:"+resourceType+":"+namespace),
-		tgbotapi.NewInlineKeyboardButtonData("🏷️ Filter", "menu:resource:filter:"+resourceType+":"+namespace),
-		tgbotapi.NewInlineKeyboardButtonData("🔙 Types", "menu:resource:types"),
+	rows = append(rows, tg.InlineKeyboardRow(
+		tg.InlineButtonData("🔄 Refresh", "menu:resource:refresh:"+resourceType+":"+namespace),
+		tg.InlineButtonData("🏷️ Filter", "menu:resource:filter:"+resourceType+":"+namespace),
+		tg.InlineButtonData("🔙 Types", "menu:resource:types"),
 	))
 
-	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+	return tg.InlineKeyboard(rows...)
 }
 
 func (mb *MenuBuilder) formatResourceButton(r k8s.ResourceInfo) string {
@@ -248,31 +248,31 @@ func (mb *MenuBuilder) formatResourceButton(r k8s.ResourceInfo) string {
 }
 
 // GetResourceActionInlineKeyboard returns action buttons for a specific resource
-func (mb *MenuBuilder) GetResourceActionInlineKeyboard(resourceType, namespace, name string, resource *k8s.ResourceInfo) tgbotapi.InlineKeyboardMarkup {
-	var rows [][]tgbotapi.InlineKeyboardButton
+func (mb *MenuBuilder) GetResourceActionInlineKeyboard(resourceType, namespace, name string, resource *k8s.ResourceInfo) tg.InlineKeyboardMarkup {
+	var rows [][]tg.InlineKeyboardButton
 
 	// Common actions for all resources
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("📝 Describe", "menu:action:describe:"+resourceType+":"+namespace+":"+name),
-		tgbotapi.NewInlineKeyboardButtonData("🗑️ Delete", "menu:action:delete:"+resourceType+":"+namespace+":"+name),
+	rows = append(rows, tg.InlineKeyboardRow(
+		tg.InlineButtonData("📝 Describe", "menu:action:describe:"+resourceType+":"+namespace+":"+name),
+		tg.InlineButtonData("🗑️ Delete", "menu:action:delete:"+resourceType+":"+namespace+":"+name),
 	))
 
 	// Resource-specific actions
 	switch resourceType {
 	case "pods":
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📋 Logs", "menu:action:logs:"+namespace+":"+name),
-			tgbotapi.NewInlineKeyboardButtonData("🖥️ Exec", "menu:action:exec:"+namespace+":"+name),
-			tgbotapi.NewInlineKeyboardButtonData("🔌 Port Forward", "menu:action:portforward:"+namespace+":"+name),
+		rows = append(rows, tg.InlineKeyboardRow(
+			tg.InlineButtonData("📋 Logs", "menu:action:logs:"+namespace+":"+name),
+			tg.InlineButtonData("🖥️ Exec", "menu:action:exec:"+namespace+":"+name),
+			tg.InlineButtonData("🔌 Port Forward", "menu:action:portforward:"+namespace+":"+name),
 		))
 		if resource != nil {
 			// Add container selection if multiple containers
 			if containers, ok := resource.Details["spec"].(map[string]interface{})["containers"].([]interface{}); ok && len(containers) > 1 {
-				var containerRow []tgbotapi.InlineKeyboardButton
+				var containerRow []tg.InlineKeyboardButton
 				for _, c := range containers {
 					if container, ok := c.(map[string]interface{}); ok {
 						if cName, ok := container["name"].(string); ok {
-							containerRow = append(containerRow, tgbotapi.NewInlineKeyboardButtonData("📋 "+cName, "menu:action:logs:"+namespace+":"+name+":"+cName))
+							containerRow = append(containerRow, tg.InlineButtonData("📋 "+cName, "menu:action:logs:"+namespace+":"+name+":"+cName))
 						}
 					}
 				}
@@ -283,155 +283,155 @@ func (mb *MenuBuilder) GetResourceActionInlineKeyboard(resourceType, namespace, 
 		}
 
 	case "deployments":
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔄 Restart", "menu:action:restart:"+namespace+":"+name),
-			tgbotapi.NewInlineKeyboardButtonData("📈 Scale", "menu:action:scale:"+namespace+":"+name),
-			tgbotapi.NewInlineKeyboardButtonData("📋 Pods", "menu:action:pods:"+namespace+":"+name),
+		rows = append(rows, tg.InlineKeyboardRow(
+			tg.InlineButtonData("🔄 Restart", "menu:action:restart:"+namespace+":"+name),
+			tg.InlineButtonData("📈 Scale", "menu:action:scale:"+namespace+":"+name),
+			tg.InlineButtonData("📋 Pods", "menu:action:pods:"+namespace+":"+name),
 		))
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📝 Edit", "menu:action:edit:"+resourceType+":"+namespace+":"+name),
-			tgbotapi.NewInlineKeyboardButtonData("📜 History", "menu:action:history:"+namespace+":"+name),
+		rows = append(rows, tg.InlineKeyboardRow(
+			tg.InlineButtonData("📝 Edit", "menu:action:edit:"+resourceType+":"+namespace+":"+name),
+			tg.InlineButtonData("📜 History", "menu:action:history:"+namespace+":"+name),
 		))
 
 	case "services":
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔌 Port Forward", "menu:action:portforward:"+namespace+":"+name),
-			tgbotapi.NewInlineKeyboardButtonData("📋 Endpoints", "menu:action:endpoints:"+namespace+":"+name),
+		rows = append(rows, tg.InlineKeyboardRow(
+			tg.InlineButtonData("🔌 Port Forward", "menu:action:portforward:"+namespace+":"+name),
+			tg.InlineButtonData("📋 Endpoints", "menu:action:endpoints:"+namespace+":"+name),
 		))
 
 	case "nodes":
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📊 Top", "menu:action:top:node:"+name),
-			tgbotapi.NewInlineKeyboardButtonData("📋 Pods", "menu:action:nodepods:"+name),
-			tgbotapi.NewInlineKeyboardButtonData("🔧 Cordon", "menu:action:cordon:"+name),
+		rows = append(rows, tg.InlineKeyboardRow(
+			tg.InlineButtonData("📊 Top", "menu:action:top:node:"+name),
+			tg.InlineButtonData("📋 Pods", "menu:action:nodepods:"+name),
+			tg.InlineButtonData("🔧 Cordon", "menu:action:cordon:"+name),
 		))
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔓 Uncordon", "menu:action:uncordon:"+name),
-			tgbotapi.NewInlineKeyboardButtonData("💤 Drain", "menu:action:drain:"+name),
+		rows = append(rows, tg.InlineKeyboardRow(
+			tg.InlineButtonData("🔓 Uncordon", "menu:action:uncordon:"+name),
+			tg.InlineButtonData("💤 Drain", "menu:action:drain:"+name),
 		))
 
 	case "namespaces":
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📋 Resources", "menu:action:nsresources:"+name),
-			tgbotapi.NewInlineKeyboardButtonData("🗑️ Delete", "menu:action:delete:namespace::"+name),
+		rows = append(rows, tg.InlineKeyboardRow(
+			tg.InlineButtonData("📋 Resources", "menu:action:nsresources:"+name),
+			tg.InlineButtonData("🗑️ Delete", "menu:action:delete:namespace::"+name),
 		))
 
 	case "replicasets":
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📋 Pods", "menu:action:rspods:"+namespace+":"+name),
-			tgbotapi.NewInlineKeyboardButtonData("📈 Scale", "menu:action:rsscale:"+namespace+":"+name),
+		rows = append(rows, tg.InlineKeyboardRow(
+			tg.InlineButtonData("📋 Pods", "menu:action:rspods:"+namespace+":"+name),
+			tg.InlineButtonData("📈 Scale", "menu:action:rsscale:"+namespace+":"+name),
 		))
 	}
 
 	// Navigation
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", "menu:resource:view:"+resourceType+":"+namespace+":"+name),
-		tgbotapi.NewInlineKeyboardButtonData("🔙 List", "menu:resource:list:"+resourceType+":"+namespace),
-		tgbotapi.NewInlineKeyboardButtonData("🏠 Main", "menu:main"),
+	rows = append(rows, tg.InlineKeyboardRow(
+		tg.InlineButtonData("🔄 Refresh", "menu:resource:view:"+resourceType+":"+namespace+":"+name),
+		tg.InlineButtonData("🔙 List", "menu:resource:list:"+resourceType+":"+namespace),
+		tg.InlineButtonData("🏠 Main", "menu:main"),
 	))
 
-	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+	return tg.InlineKeyboard(rows...)
 }
 
 // GetContextsInlineKeyboard returns inline keyboard for context management
-func (mb *MenuBuilder) GetContextsInlineKeyboard(contexts []kubeconfig.ContextInfo) tgbotapi.InlineKeyboardMarkup {
-	var rows [][]tgbotapi.InlineKeyboardButton
+func (mb *MenuBuilder) GetContextsInlineKeyboard(contexts []kubeconfig.ContextInfo) tg.InlineKeyboardMarkup {
+	var rows [][]tg.InlineKeyboardButton
 
 	for _, ctx := range contexts {
 		label := ctx.Name
 		if ctx.Current {
 			label = "✅ " + label
 		}
-		rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(label, "menu:ctx:switch:"+ctx.Name),
+		rows = append(rows, tg.InlineKeyboardRow(
+			tg.InlineButtonData(label, "menu:ctx:switch:"+ctx.Name),
 		))
 	}
 
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("🔄 Refresh", "menu:ctx:refresh"),
-		tgbotapi.NewInlineKeyboardButtonData("🏠 Main", "menu:main"),
+	rows = append(rows, tg.InlineKeyboardRow(
+		tg.InlineButtonData("🔄 Refresh", "menu:ctx:refresh"),
+		tg.InlineButtonData("🏠 Main", "menu:main"),
 	))
 
-	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+	return tg.InlineKeyboard(rows...)
 }
 
 // GetMonitorInlineKeyboard returns inline keyboard for monitoring
-func (mb *MenuBuilder) GetMonitorInlineKeyboard() tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📊 Top Pods", "menu:monitor:top:pods"),
-			tgbotapi.NewInlineKeyboardButtonData("🖥️ Top Nodes", "menu:monitor:top:nodes"),
+func (mb *MenuBuilder) GetMonitorInlineKeyboard() tg.InlineKeyboardMarkup {
+	return tg.InlineKeyboard(
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("📊 Top Pods", "menu:monitor:top:pods"),
+			tg.InlineButtonData("🖥️ Top Nodes", "menu:monitor:top:nodes"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📅 Events", "menu:monitor:events"),
-			tgbotapi.NewInlineKeyboardButtonData("👁️ Watch", "menu:monitor:watch"),
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("📅 Events", "menu:monitor:events"),
+			tg.InlineButtonData("👁️ Watch", "menu:monitor:watch"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔙 Main", "menu:main"),
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("🔙 Main", "menu:main"),
 		),
 	)
 }
 
 // GetOperationsInlineKeyboard returns inline keyboard for operations
-func (mb *MenuBuilder) GetOperationsInlineKeyboard() tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔄 Restart Deployment", "menu:ops:restart"),
-			tgbotapi.NewInlineKeyboardButtonData("📈 Scale Deployment", "menu:ops:scale"),
+func (mb *MenuBuilder) GetOperationsInlineKeyboard() tg.InlineKeyboardMarkup {
+	return tg.InlineKeyboard(
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("🔄 Restart Deployment", "menu:ops:restart"),
+			tg.InlineButtonData("📈 Scale Deployment", "menu:ops:scale"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🗑️ Delete Resource", "menu:ops:delete"),
-			tgbotapi.NewInlineKeyboardButtonData("✏️ Edit Resource", "menu:ops:edit"),
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("🗑️ Delete Resource", "menu:ops:delete"),
+			tg.InlineButtonData("✏️ Edit Resource", "menu:ops:edit"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🏠 Main", "menu:main"),
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("🏠 Main", "menu:main"),
 		),
 	)
 }
 
 // GetSettingsInlineKeyboard returns inline keyboard for settings
-func (mb *MenuBuilder) GetSettingsInlineKeyboard() tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🌐 Namespace", "menu:settings:namespace"),
-			tgbotapi.NewInlineKeyboardButtonData("⚙️ Context", "menu:settings:context"),
+func (mb *MenuBuilder) GetSettingsInlineKeyboard() tg.InlineKeyboardMarkup {
+	return tg.InlineKeyboard(
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("🌐 Namespace", "menu:settings:namespace"),
+			tg.InlineButtonData("⚙️ Context", "menu:settings:context"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🎨 Theme", "menu:settings:theme"),
-			tgbotapi.NewInlineKeyboardButtonData("🔔 Notifications", "menu:settings:notifications"),
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("🎨 Theme", "menu:settings:theme"),
+			tg.InlineButtonData("🔔 Notifications", "menu:settings:notifications"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🏠 Main", "menu:main"),
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("🏠 Main", "menu:main"),
 		),
 	)
 }
 
 // GetConfirmDeleteKeyboard returns confirmation keyboard for delete actions
-func (mb *MenuBuilder) GetConfirmDeleteKeyboard(resourceType, namespace, name string) tgbotapi.InlineKeyboardMarkup {
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✅ Yes, Delete", "menu:action:confirmdelete:"+resourceType+":"+namespace+":"+name),
-			tgbotapi.NewInlineKeyboardButtonData("❌ Cancel", "menu:resource:view:"+resourceType+":"+namespace+":"+name),
+func (mb *MenuBuilder) GetConfirmDeleteKeyboard(resourceType, namespace, name string) tg.InlineKeyboardMarkup {
+	return tg.InlineKeyboard(
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("✅ Yes, Delete", "menu:action:confirmdelete:"+resourceType+":"+namespace+":"+name),
+			tg.InlineButtonData("❌ Cancel", "menu:resource:view:"+resourceType+":"+namespace+":"+name),
 		),
 	)
 }
 
 // GetScaleKeyboard returns keyboard for scaling deployments
-func (mb *MenuBuilder) GetScaleKeyboard(namespace, name string, currentReplicas int32) tgbotapi.InlineKeyboardMarkup {
-	var rows [][]tgbotapi.InlineKeyboardButton
+func (mb *MenuBuilder) GetScaleKeyboard(namespace, name string, currentReplicas int32) tg.InlineKeyboardMarkup {
+	var rows [][]tg.InlineKeyboardButton
 
 	// Quick scale buttons
 	quickScales := []int32{0, 1, 2, 3, 5, 10}
-	var scaleRow []tgbotapi.InlineKeyboardButton
+	var scaleRow []tg.InlineKeyboardButton
 	for _, r := range quickScales {
 		label := intToString(int(r))
 		if r == currentReplicas {
 			label = "✅ " + label
 		}
-		scaleRow = append(scaleRow, tgbotapi.NewInlineKeyboardButtonData(label, "menu:action:scaleset:"+namespace+":"+name+":"+intToString(int(r))))
+		scaleRow = append(scaleRow, tg.InlineButtonData(label, "menu:action:scaleset:"+namespace+":"+name+":"+intToString(int(r))))
 		if len(scaleRow) == 3 {
 			rows = append(rows, scaleRow)
-			scaleRow = []tgbotapi.InlineKeyboardButton{}
+			scaleRow = []tg.InlineKeyboardButton{}
 		}
 	}
 	if len(scaleRow) > 0 {
@@ -439,31 +439,31 @@ func (mb *MenuBuilder) GetScaleKeyboard(namespace, name string, currentReplicas 
 	}
 
 	// Custom scale
-	rows = append(rows, tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData("✏️ Custom", "menu:action:scalecustom:"+namespace+":"+name),
-		tgbotapi.NewInlineKeyboardButtonData("🔙 Back", "menu:resource:view:deployments:"+namespace+":"+name),
+	rows = append(rows, tg.InlineKeyboardRow(
+		tg.InlineButtonData("✏️ Custom", "menu:action:scalecustom:"+namespace+":"+name),
+		tg.InlineButtonData("🔙 Back", "menu:resource:view:deployments:"+namespace+":"+name),
 	))
 
-	return tgbotapi.NewInlineKeyboardMarkup(rows...)
+	return tg.InlineKeyboard(rows...)
 }
 
 // GetLogOptionsKeyboard returns keyboard for log options
-func (mb *MenuBuilder) GetLogOptionsKeyboard(namespace, name, container string) tgbotapi.InlineKeyboardMarkup {
+func (mb *MenuBuilder) GetLogOptionsKeyboard(namespace, name, container string) tg.InlineKeyboardMarkup {
 	followText := "👁️ Follow"
 	// We can't track follow state here, but the handler can
 
-	return tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📋 Last 50", "menu:action:logs:"+namespace+":"+name+":"+container+":50"),
-			tgbotapi.NewInlineKeyboardButtonData("📋 Last 100", "menu:action:logs:"+namespace+":"+name+":"+container+":100"),
-			tgbotapi.NewInlineKeyboardButtonData("📋 Last 500", "menu:action:logs:"+namespace+":"+name+":"+container+":500"),
+	return tg.InlineKeyboard(
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("📋 Last 50", "menu:action:logs:"+namespace+":"+name+":"+container+":50"),
+			tg.InlineButtonData("📋 Last 100", "menu:action:logs:"+namespace+":"+name+":"+container+":100"),
+			tg.InlineButtonData("📋 Last 500", "menu:action:logs:"+namespace+":"+name+":"+container+":500"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData(followText, "menu:action:logsfollow:"+namespace+":"+name+":"+container),
-			tgbotapi.NewInlineKeyboardButtonData("⏮️ Previous", "menu:action:logsprevious:"+namespace+":"+name+":"+container),
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData(followText, "menu:action:logsfollow:"+namespace+":"+name+":"+container),
+			tg.InlineButtonData("⏮️ Previous", "menu:action:logsprevious:"+namespace+":"+name+":"+container),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔙 Back", "menu:resource:view:pods:"+namespace+":"+name),
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("🔙 Back", "menu:resource:view:pods:"+namespace+":"+name),
 		),
 	)
 }
@@ -474,14 +474,14 @@ func (mb *MenuBuilder) GetLogOptionsKeyboard(namespace, name, container string) 
 
 // CallbackAction represents a parsed callback action
 type CallbackAction struct {
-	Type       string
+	Type         string
 	ResourceType string
-	Namespace  string
-	Name       string
-	Container  string
-	Page       int
-	Action     string
-	Extra      string
+	Namespace    string
+	Name         string
+	Container    string
+	Page         int
+	Action       string
+	Extra        string
 }
 
 // ParseCallbackData parses callback data from inline keyboard buttons

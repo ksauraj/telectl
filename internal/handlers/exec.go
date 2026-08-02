@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/k8s"
+	"github.com/ksauraj/telectl/internal/tg"
+	"github.com/ksauraj/telectl/internal/types"
 )
 
 type ExecHandler struct {
@@ -38,7 +38,7 @@ func NewExecHandler(b types.BotInterface) *ExecHandler {
 	}
 }
 
-func (h *ExecHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []string, session *types.UserSession) error {
+func (h *ExecHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	if len(args) == 0 {
 		h.sendResponse(msg.Chat.ID, "Usage: /exec <pod> [-n namespace] [-c container] [command...]")
 		return nil
@@ -107,7 +107,7 @@ func (h *ExecHandler) Handle(ctx context.Context, msg *tgbotapi.Message, args []
 	return h.executeCommand(ctx, msg, client, podName, namespace, container, command)
 }
 
-func (h *ExecHandler) startInteractiveSession(ctx context.Context, msg *tgbotapi.Message, session *types.UserSession, podName, namespace, container string) error {
+func (h *ExecHandler) startInteractiveSession(ctx context.Context, msg *tg.Message, session *types.UserSession, podName, namespace, container string) error {
 	chatID := msg.Chat.ID
 
 	// Check if user already has an active session
@@ -144,13 +144,13 @@ func (h *ExecHandler) startInteractiveSession(ctx context.Context, msg *tgbotapi
 	session.SetExecMode(podName, namespace, container)
 
 	// Send welcome message with keyboard
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔴 Exit Session", "exec:exit"),
+	keyboard := tg.NewInlineKeyboardMarkup(
+		tg.NewInlineKeyboardRow(
+			tg.NewInlineKeyboardButtonData("🔴 Exit Session", "exec:exit"),
 		),
 	)
 
-	h.bot.SendKeyboard(chatID, fmt.Sprintf("🖥️ *Interactive session started*\nPod: %s/%s\nContainer: %s\nType commands below. Use /exit to quit.", namespace, podName, container), keyboard)
+	h.bot.SendKeyboard(chatID, fmt.Sprintf("🖥️ *Interactive session started*\nPod: %s/%s\nContainer: %s\nType commands below. Use /exit to quit.", namespace, podName, container), &keyboard)
 
 	// Start exec in background
 	go func() {
@@ -172,16 +172,16 @@ func (h *ExecHandler) startInteractiveSession(ctx context.Context, msg *tgbotapi
 		session.ClearExecMode()
 
 		if err != nil && execCtx.Err() == nil {
-			h.bot.SendMessage(chatID, fmt.Sprintf("❌ Exec session ended with error: %s", err))
+			h.bot.SendText(chatID, fmt.Sprintf("❌ Exec session ended with error: %s", err))
 		} else {
-			h.bot.SendMessage(chatID, "👋 Exec session ended")
+			h.bot.SendText(chatID, "👋 Exec session ended")
 		}
 	}()
 
 	return nil
 }
 
-func (h *ExecHandler) executeCommand(ctx context.Context, msg *tgbotapi.Message, client *k8s.Client, podName, namespace, container string, command []string) error {
+func (h *ExecHandler) executeCommand(ctx context.Context, msg *tg.Message, client *k8s.Client, podName, namespace, container string, command []string) error {
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}
 
@@ -220,7 +220,7 @@ func (h *ExecHandler) executeCommand(ctx context.Context, msg *tgbotapi.Message,
 	return nil
 }
 
-func (h *ExecHandler) HandleExecInput(ctx context.Context, msg *tgbotapi.Message, session *types.UserSession) {
+func (h *ExecHandler) HandleExecInput(ctx context.Context, msg *tg.Message, session *types.UserSession) {
 	chatID := msg.Chat.ID
 
 	h.mu.Lock()
