@@ -33,6 +33,10 @@ type Client struct {
 	kubeconfig    *kubeconfig.KubeConfig
 	logger        *zap.Logger
 	dryRun        bool
+	// currentContext tracks the context this client is using. It can diverge
+	// from the kubeconfig's current-context, because switching in-process
+	// deliberately does not write to disk.
+	currentContext string
 }
 
 type PodLogOptions struct {
@@ -82,10 +86,22 @@ type ResourceInfo struct {
 	Details     map[string]interface{} `json:"details,omitempty"`
 }
 
-func NewClient(kubeConfigPath, context string, dryRun bool, logger *zap.Logger) (*Client, error) {
-	loadingRules := &clientcmd.ClientConfigLoadingRules{
-		ExplicitPath: kubeConfigPath,
+// loadingRulesFor builds kubeconfig loading rules for an optional explicit path.
+//
+// Setting ExplicitPath to "" does not mean "use the default" — it disables the
+// search entirely and yields "no configuration has been provided". Callers that
+// skip config.ValidateConfig (which fills the default path) therefore failed to
+// find ~/.kube/config at all. Fall back to clientcmd's standard rules, which
+// also honour $KUBECONFIG.
+func loadingRulesFor(kubeConfigPath string) clientcmd.ClientConfigLoader {
+	if kubeConfigPath != "" {
+		return &clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeConfigPath}
 	}
+	return clientcmd.NewDefaultClientConfigLoadingRules()
+}
+
+func NewClient(kubeConfigPath, context string, dryRun bool, logger *zap.Logger) (*Client, error) {
+	loadingRules := loadingRulesFor(kubeConfigPath)
 	overrides := &clientcmd.ConfigOverrides{}
 	if context != "" {
 		overrides.CurrentContext = context
@@ -119,13 +135,24 @@ func NewClient(kubeConfigPath, context string, dryRun bool, logger *zap.Logger) 
 		kc = &kubeconfig.KubeConfig{ConfigFile: kubeConfigPath}
 	}
 
+	// Seed currentContext so CurrentContextName is accurate before any switch.
+	// The explicit --context flag wins; otherwise it is the kubeconfig's own
+	// current-context.
+	active := context
+	if active == "" {
+		if cur := kc.GetCurrentContext(); cur != nil {
+			active = cur.Name
+		}
+	}
+
 	return &Client{
-		clientset:     clientset,
-		dynamicClient: dynamicClient,
-		restConfig:    restConfig,
-		kubeconfig:    kc,
-		logger:        logger,
-		dryRun:        dryRun,
+		clientset:      clientset,
+		dynamicClient:  dynamicClient,
+		restConfig:     restConfig,
+		kubeconfig:     kc,
+		logger:         logger,
+		dryRun:         dryRun,
+		currentContext: active,
 	}, nil
 }
 
@@ -143,11 +170,84 @@ func (c *Client) GetCurrentContext() *kubeconfig.ContextInfo {
 	return c.kubeconfig.GetCurrentContext()
 }
 
+// SwitchContext points this client at a different kubeconfig context.
+//
+// Two things this must get right:
+//
+//  1. The clientset/dynamicClient are built once in NewClient from a single
+//     rest.Config. Changing the context without rebuilding them left the bot
+//     talking to the *previous* cluster while reporting success, until restart.
+//  2. Writing the change back to ~/.kube/config is a global side effect on the
+//     host, triggered by a chat message: it changes the active context for every
+//     other user of the bot and for any kubectl on that machine. It is therefore
+//     opt-in via persist, and off for the menu/command paths.
 func (c *Client) SwitchContext(contextName string) error {
 	if c.kubeconfig == nil {
 		return fmt.Errorf("kubeconfig not loaded")
 	}
+	if c.kubeconfig.GetContextByName(contextName) == nil {
+		return fmt.Errorf("context not found: %s", contextName)
+	}
+	return c.useContext(contextName)
+}
+
+// useContext rebuilds the API clients against contextName without touching disk.
+func (c *Client) useContext(contextName string) error {
+	loadingRules := &clientcmd.ClientConfigLoadingRules{
+		ExplicitPath: c.kubeconfig.ConfigFile,
+	}
+	overrides := &clientcmd.ConfigOverrides{CurrentContext: contextName}
+
+	restConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		loadingRules, overrides).ClientConfig()
+	if err != nil {
+		return fmt.Errorf("failed to build rest config for context %q: %w", contextName, err)
+	}
+	restConfig.Burst = c.restConfig.Burst
+	restConfig.QPS = c.restConfig.QPS
+	restConfig.Timeout = c.restConfig.Timeout
+
+	clientset, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create clientset for context %q: %w", contextName, err)
+	}
+	dynamicClient, err := dynamic.NewForConfig(restConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create dynamic client for context %q: %w", contextName, err)
+	}
+
+	// Swap in only after every step succeeded, so a failed switch leaves the
+	// client usable against the previous context.
+	c.restConfig = restConfig
+	c.clientset = clientset
+	c.dynamicClient = dynamicClient
+	c.currentContext = contextName
+
+	c.logger.Info("Switched Kubernetes context",
+		zap.String("context", contextName),
+		zap.String("server", restConfig.Host))
+	return nil
+}
+
+// SwitchContextPersistent switches context and writes the choice back to the
+// kubeconfig file. Only for explicit administrative use: this mutates state
+// shared with kubectl and with every other user of this bot.
+func (c *Client) SwitchContextPersistent(contextName string) error {
+	if err := c.SwitchContext(contextName); err != nil {
+		return err
+	}
 	return c.kubeconfig.SwitchContext(contextName)
+}
+
+// CurrentContextName returns the context this client is currently using.
+func (c *Client) CurrentContextName() string {
+	if c.currentContext != "" {
+		return c.currentContext
+	}
+	if cur := c.GetCurrentContext(); cur != nil {
+		return cur.Name
+	}
+	return ""
 }
 
 func (c *Client) GetRESTConfig() *rest.Config {

@@ -275,6 +275,11 @@ dispatch (`scaleset`) is not wired yet.
 
 Context switching applies immediately and is reflected in the main menu header.
 
+**Scope:** switching context rebuilds the bot's own connection only. It does
+**not** rewrite `~/.kube/config`, because that file is shared with `kubectl` and
+with every other user of the bot — a chat message should not repoint another
+person's tooling. Your `kubectl` current-context is unaffected.
+
 ---
 
 ## The persistent bottom bar

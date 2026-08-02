@@ -275,14 +275,32 @@ func (kc *KubeConfig) DeleteContext(name string) error {
 	return kc.Save()
 }
 
-// Save writes the kubeconfig back to disk
+// Save writes the kubeconfig back to disk in the standard versioned v1 format.
+//
+// This must go through clientcmd.WriteToFile, never yaml.Marshal(kc.Raw).
+// kc.Raw is a *clientcmdapi.Config — the *internal* representation — and
+// marshalling it directly emits lowercased Go field names ("authinfos" instead
+// of "users"), maps keyed by name where v1 requires lists of {name, cluster},
+// and the internal-only "locationoforigin" field. The result is a file that no
+// Kubernetes tool can read, including kubectl:
+//
+//	json: cannot unmarshal object into Go struct field Config.clusters
+//	of type []v1.NamedCluster
+//
+// clientcmd.WriteToFile performs the internal -> v1 conversion. It also writes
+// atomically, so an interrupted save cannot truncate an existing kubeconfig.
 func (kc *KubeConfig) Save() error {
-	data, err := yaml.Marshal(kc.Raw)
-	if err != nil {
-		return fmt.Errorf("failed to marshal kubeconfig: %w", err)
+	if kc.Raw == nil {
+		return fmt.Errorf("kubeconfig not loaded; refusing to write")
 	}
-
-	return os.WriteFile(kc.ConfigFile, data, 0600)
+	// Guard against writing an empty config over a populated file.
+	if len(kc.Raw.Clusters) == 0 && len(kc.Raw.Contexts) == 0 {
+		return fmt.Errorf("refusing to write a kubeconfig with no clusters or contexts")
+	}
+	if err := clientcmd.WriteToFile(*kc.Raw, kc.ConfigFile); err != nil {
+		return fmt.Errorf("failed to write kubeconfig %q: %w", kc.ConfigFile, err)
+	}
+	return nil
 }
 
 // Validate validates the kubeconfig structure

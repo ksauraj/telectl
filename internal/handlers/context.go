@@ -68,14 +68,23 @@ func (h *UseContextHandler) Handle(ctx context.Context, msg *tg.Message, args []
 	contextName := args[0]
 	client := h.getK8sClient()
 
-	err := client.SwitchContext(contextName)
-	if err != nil {
+	// Session-scoped: this rebuilds the bot's API clients but deliberately does
+	// not rewrite ~/.kube/config, which is shared with kubectl and with every
+	// other user of this bot.
+	if err := client.SwitchContext(contextName); err != nil {
 		return fmt.Errorf("failed to switch context: %w", err)
 	}
 
 	session.CurrentCtx = contextName
 
-	h.sendResponse(msg.Chat.ID, fmt.Sprintf("✅ Switched to context: %s", contextName))
+	pairs := [][2]string{
+		{"Context", contextName},
+		{"Server", client.GetRESTConfig().Host},
+		{"Scope", "this bot session only"},
+	}
+	h.bot.SendRich(msg.Chat.ID,
+		formatters.RichKeyValue("✅ Context switched", pairs),
+		fmt.Sprintf("✅ Switched to context: %s\n(session only; ~/.kube/config unchanged)", contextName))
 	return nil
 }
 
