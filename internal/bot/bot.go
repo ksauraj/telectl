@@ -3,49 +3,51 @@ package bot
 import (
 	"context"
 	"fmt"
-	"io"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	bottg "github.com/go-telegram/bot"
+	botmodels "github.com/go-telegram/bot/models"
 	"github.com/ksauraj/telectl/internal/config"
 	"github.com/ksauraj/telectl/internal/handlers"
 	"github.com/ksauraj/telectl/internal/k8s"
 	"github.com/ksauraj/telectl/internal/menus"
+	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
-	"github.com/ksauraj/telectl/internal/utils/formatters"
+	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"go.uber.org/zap"
 )
 
-// Bot is the Telegram bot for Kubernetes operations.
 type Bot struct {
-	api          *tgbotapi.BotAPI
+	tgBot        *tg.RealBot
+	libBot       *bottg.Bot
 	config       *config.Config
 	k8sClient    *k8s.Client
 	logger       *zap.Logger
 	handlers     map[string]handlers.CommandHandler
 	rateLimiter  *types.RateLimiter
-	userSessions sync.Map // userID -> *types.UserSession
+	userSessions sync.Map
 	menuBuilder  *menus.MenuBuilder
 	cancelFunc   context.CancelFunc
 }
 
-// New creates a new Bot instance.
 func New(cfg *config.Config, logger *zap.Logger) (*Bot, error) {
 	if err := config.ValidateConfig(cfg); err != nil {
 		return nil, err
 	}
 
-	api, err := tgbotapi.NewBotAPI(cfg.Telegram.BotToken)
+	tgBot, err := tg.NewRealBot(cfg.Telegram.BotToken)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create bot API: %w", err)
+		return nil, fmt.Errorf("failed to create bot: %w", err)
 	}
-	api.Debug = cfg.Logging.Level == "debug"
-	logger.Info("Bot authorized", zap.String("username", api.Self.UserName))
+
+	libBot := tgBot.LibraryBot()
+	me, _ := libBot.GetMe(context.Background())
+	if me != nil {
+		logger.Info("Bot authorized", zap.String("username", me.Username))
+	}
 
 	k8sClient, err := k8s.NewClient(
 		cfg.Kubernetes.KubeconfigPath,
@@ -67,13 +69,14 @@ func New(cfg *config.Config, logger *zap.Logger) (*Bot, error) {
 	}
 
 	b := &Bot{
-		api:          api,
-		config:       cfg,
-		k8sClient:    k8sClient,
-		logger:       logger,
-		handlers:     make(map[string]handlers.CommandHandler),
-		rateLimiter:  types.NewRateLimiter(cfg.Bot.RateLimit, time.Minute),
-		menuBuilder:  menus.NewMenuBuilder(cfg),
+		tgBot:       tgBot,
+		libBot:      libBot,
+		config:      cfg,
+		k8sClient:   k8sClient,
+		logger:      logger,
+		handlers:    make(map[string]handlers.CommandHandler),
+		rateLimiter: types.NewRateLimiter(cfg.Bot.RateLimit, time.Minute),
+		menuBuilder: menus.NewMenuBuilder(cfg),
 	}
 	b.registerHandlers()
 	return b, nil
@@ -102,94 +105,82 @@ func (b *Bot) registerHandlers() {
 	b.handlers["settings"] = handlers.NewSettingsHandler(b)
 }
 
-// Start begins the long-poll loop for Telegram updates.
 func (b *Bot) Start(ctx context.Context) error {
 	ctx, b.cancelFunc = context.WithCancel(ctx)
 
 	if b.menuBuilder.IsMenuButtonEnabled() {
-		commands := b.menuBuilder.GetBotCommands()
-		if _, err := b.api.Request(tgbotapi.NewSetMyCommands(commands...)); err != nil {
+		tgCommands := b.menuBuilder.GetBotCommands()
+		commands := make([]botmodels.BotCommand, len(tgCommands))
+		for i, c := range tgCommands {
+			commands[i] = botmodels.BotCommand{Command: c.Command, Description: c.Description}
+		}
+		if _, err := b.libBot.SetMyCommands(ctx, &bottg.SetMyCommandsParams{Commands: commands}); err != nil {
 			b.logger.Warn("Failed to set bot menu commands", zap.Error(err))
 		} else {
 			b.logger.Info("Bot menu commands set", zap.Int("count", len(commands)))
 		}
 	}
 
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-	updates := b.api.GetUpdatesChan(u)
+	b.libBot.RegisterHandler(bottg.HandlerTypeMessageText, "", bottg.MatchTypeCommand, b.handleMessage)
+	b.libBot.RegisterHandler(bottg.HandlerTypeCallbackQueryData, "", bottg.MatchTypePrefix, b.handleCallbackQuery)
 
-	log := b.logger.With(zap.String("bot", b.api.Self.UserName))
-	log.Info("Bot started, listening for updates")
-
-	for {
-		select {
-		case <-ctx.Done():
-			log.Info("Bot stopping")
-			return ctx.Err()
-		case update, ok := <-updates:
-			if !ok {
-				log.Info("Updates channel closed")
-				return nil
-			}
-			go b.handleUpdate(ctx, update)
-		}
-	}
+	b.libBot.Start(ctx)
+	return nil
 }
 
-// Stop cancels the update loop.
 func (b *Bot) Stop() {
 	if b.cancelFunc != nil {
 		b.cancelFunc()
 	}
 }
 
-func (b *Bot) handleUpdate(ctx context.Context, update tgbotapi.Update) {
+func (b *Bot) handleMessage(ctx context.Context, bot *bottg.Bot, update *botmodels.Update) {
+	// Handle inline queries first
 	if update.InlineQuery != nil {
 		b.handleInlineQuery(ctx, update.InlineQuery)
 		return
 	}
-	if update.CallbackQuery != nil {
-		b.handleCallbackQuery(ctx, update.CallbackQuery)
-		return
-	}
-	if update.Message == nil {
+
+	msg := update.Message
+	if msg == nil {
 		return
 	}
 
-	msg := update.Message
 	userID := msg.From.ID
 	chatID := msg.Chat.ID
 
 	if !b.IsUserAllowed(userID) {
-		b.SendMessage(chatID, "❌ You are not authorized to use this bot.")
+		b.tgBot.SendText(ctx, chatID, "❌ You are not authorized to use this bot.", "HTML", nil)
 		return
 	}
 	if !b.rateLimiter.Allow(userID) {
-		b.SendMessage(chatID, "⏱️ Rate limit exceeded. Please wait a moment.")
+		b.tgBot.SendText(ctx, chatID, "⏱️ Rate limit exceeded. Please wait a moment.", "HTML", nil)
 		return
 	}
 
 	session := b.getOrCreateSession(userID)
 	session.Touch()
 
-	if b.menuBuilder.IsReplyKeyboardEnabled() && !msg.IsCommand() {
+	if b.menuBuilder.IsReplyKeyboardEnabled() && !strings.HasPrefix(msg.Text, "/") {
 		if b.handleReplyKeyboard(ctx, msg, session) {
 			return
 		}
 	}
 
-	if msg.IsCommand() {
+	if strings.HasPrefix(msg.Text, "/") {
 		b.handleCommand(ctx, msg, session)
 	} else if session.IsInExecMode() {
 		b.handleExecInput(ctx, msg, session)
 	} else {
-		b.ShowMainMenu(chatID, session)
+		b.ShowMainMenu(ctx, chatID, session)
 	}
 }
 
-func (b *Bot) handleInlineQuery(ctx context.Context, inlineQuery *tgbotapi.InlineQuery) {
-	userID := inlineQuery.From.ID
+func (b *Bot) handleInlineQuery(ctx context.Context, iq *botmodels.InlineQuery) {
+	if iq == nil {
+		return
+	}
+	userID := iq.From.ID
 	if !b.IsUserAllowed(userID) {
 		return
 	}
@@ -197,109 +188,142 @@ func (b *Bot) handleInlineQuery(ctx context.Context, inlineQuery *tgbotapi.Inlin
 		return
 	}
 	handler := handlers.NewInlineQueryHandler(b)
-	if err := handler.HandleInlineQuery(ctx, inlineQuery); err != nil {
+	// Convert botmodels.InlineQuery to tg.InlineQuery
+	tgIQ := &tg.InlineQuery{
+		ID:       iq.ID,
+		From:     &tg.User{ID: iq.From.ID, FirstName: iq.From.FirstName, Username: iq.From.Username},
+		Query:    iq.Query,
+		Offset:   iq.Offset,
+		ChatType: string(iq.ChatType),
+	}
+	if err := handler.HandleInlineQuery(ctx, tgIQ); err != nil {
 		b.logger.Error("Inline query failed",
 			zap.Int64("user_id", userID),
-			zap.String("query", inlineQuery.Query),
+			zap.String("query", iq.Query),
 			zap.Error(err),
 		)
 	}
 }
 
-func (b *Bot) handleCommand(ctx context.Context, msg *tgbotapi.Message, session *types.UserSession) {
-	cmd := msg.Command()
+func (b *Bot) handleCommand(ctx context.Context, msg *botmodels.Message, session *types.UserSession) {
+	cmd := strings.TrimPrefix(msg.Text, "/")
+	cmd = strings.Split(cmd, " ")[0]
 	if !b.IsCommandAllowed(cmd) {
-		b.SendMessage(msg.Chat.ID, fmt.Sprintf("❌ Command /%s is not allowed.", cmd))
+		b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("❌ Command /%s is not allowed.", cmd), "HTML", nil)
 		return
 	}
 	handler, ok := b.handlers[cmd]
 	if !ok {
-		b.SendMessage(msg.Chat.ID, fmt.Sprintf("❌ Unknown command: /%s\nUse /help to see available commands.", cmd))
+		b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("❌ Unknown command: /%s\nUse /help to see available commands.", cmd), "HTML", nil)
 		return
 	}
-	args := strings.Fields(msg.CommandArguments())
-	if err := handler.Handle(ctx, msg, args, session); err != nil {
+	args := strings.Fields(msg.Text)[1:]
+	if err := handler.Handle(ctx, &tg.Message{
+		ID:     msg.ID,
+		ChatID: msg.Chat.ID,
+		Text:   msg.Text,
+		From:   &tg.User{ID: msg.From.ID, FirstName: msg.From.FirstName, Username: msg.From.Username},
+		Chat:   &tg.Chat{ID: msg.Chat.ID, Type: string(msg.Chat.Type), Title: msg.Chat.Title},
+	}, args, session); err != nil {
 		b.logger.Error("Command failed", zap.String("cmd", cmd), zap.Error(err))
-		b.SendMessage(msg.Chat.ID, fmt.Sprintf("❌ Error: %s", err.Error()))
+		b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("❌ Error: %s", err.Error()), "HTML", nil)
 	}
 }
 
-func (b *Bot) handleCallbackQuery(ctx context.Context, callback *tgbotapi.CallbackQuery) {
-	_, _ = b.api.Request(tgbotapi.NewCallback(callback.ID, ""))
+func (b *Bot) handleCallbackQuery(ctx context.Context, bot *bottg.Bot, update *botmodels.Update) {
+	if update.CallbackQuery == nil {
+		return
+	}
+	callback := update.CallbackQuery
+	_, _ = bot.AnswerCallbackQuery(ctx, &bottg.AnswerCallbackQueryParams{
+		CallbackQueryID: callback.ID,
+		Text:            "",
+		ShowAlert:       false,
+	})
 	if !b.IsUserAllowed(callback.From.ID) {
 		return
 	}
-	chatID := callback.Message.Chat.ID
-	b.SendMessage(chatID, fmt.Sprintf("🔘 Callback: %s", callback.Data))
+	// MaybeInaccessibleMessage wraps the actual Message - check Type field
+	var chatID int64
+	if callback.Message.Type == botmodels.MaybeInaccessibleMessageTypeMessage && callback.Message.Message != nil {
+		chatID = callback.Message.Message.Chat.ID
+	} else {
+		return
+	}
+	b.tgBot.SendText(ctx, chatID, fmt.Sprintf("🔘 Callback: %s", callback.Data), "HTML", nil)
 }
 
-func (b *Bot) handleReplyKeyboard(ctx context.Context, msg *tgbotapi.Message, session *types.UserSession) bool {
+func (b *Bot) handleReplyKeyboard(ctx context.Context, msg *botmodels.Message, session *types.UserSession) bool {
 	text := msg.Text
 	switch text {
 	case "📦 Resources", "resources":
-		b.ShowResourceTypes(msg.Chat.ID, session)
+		b.ShowResourceTypes(ctx, msg.Chat.ID, session)
 		return true
 	case "📋 Logs", "logs":
-		b.SendMessage(msg.Chat.ID, "Usage: /logs <pod> [-c container] [-n namespace] [-f] [--tail N]")
+		b.tgBot.SendText(ctx, msg.Chat.ID, "Usage: /logs <pod> [-c container] [-n namespace] [-f] [--tail N]", "HTML", nil)
 		return true
 	case "🖥️ Exec", "exec":
-		b.SendMessage(msg.Chat.ID, "Usage: /exec <pod> [-c container] -n namespace -- <command>")
+		b.tgBot.SendText(ctx, msg.Chat.ID, "Usage: /exec <pod> [-c container] -n namespace -- <command>", "HTML", nil)
 		return true
 	case "🌐 Contexts", "contexts":
-		b.handlers["contexts"].Handle(ctx, msg, nil, session)
+		b.handlers["contexts"].Handle(ctx, &tg.Message{
+			ID:     msg.ID,
+			ChatID: msg.Chat.ID,
+			Text:   msg.Text,
+			From:   &tg.User{ID: msg.From.ID, FirstName: msg.From.FirstName, Username: msg.From.Username},
+			Chat:   &tg.Chat{ID: msg.Chat.ID, Type: string(msg.Chat.Type), Title: msg.Chat.Title},
+		}, nil, session)
 		return true
 	case "📊 Monitor", "monitor":
-		b.ShowMonitor(msg.Chat.ID, session)
+		b.ShowMonitor(ctx, msg.Chat.ID, session)
 		return true
 	case "🔧 Operations", "operations":
-		b.ShowOperations(msg.Chat.ID, session)
+		b.ShowOperations(ctx, msg.Chat.ID, session)
 		return true
 	case "⚙️ Settings", "settings":
-		b.ShowSettings(msg.Chat.ID, session)
+		b.ShowSettings(ctx, msg.Chat.ID, session)
 		return true
 	}
 	return false
 }
 
-func (b *Bot) handleExecInput(ctx context.Context, msg *tgbotapi.Message, session *types.UserSession) {
+func (b *Bot) handleExecInput(ctx context.Context, msg *botmodels.Message, session *types.UserSession) {
 	pod, namespace, container := session.GetExecInfo()
-	b.SendMessage(msg.Chat.ID, fmt.Sprintf("Exec in %s/%s [%s] — not fully implemented", namespace, pod, container))
+	b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("Exec in %s/%s [%s] — not fully implemented", namespace, pod, container), "HTML", nil)
 	session.ClearExecMode()
 }
 
-// --- Menu views ---
-
-func (b *Bot) ShowMainMenu(chatID int64, session *types.UserSession) {
+func (b *Bot) ShowMainMenu(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "main"})
 	currentCtx := "default"
 	currentNS := session.GetNamespace()
-	text := fmt.Sprintf(`🤖 *telectl*
+	text := fmt.Sprintf(`🤖 <b>telectl</b>
 
-*Cluster:* %s
-*Namespace:* %s
+<b>Cluster:</b> %s
+<b>Namespace:</b> %s
 
 Choose an action from the menu or use /help.`, currentCtx, currentNS)
-	b.SendMessage(chatID, text)
+	b.tgBot.SendText(ctx, chatID, text, "HTML", nil)
 }
 
-func (b *Bot) ShowResourceTypes(chatID int64, session *types.UserSession) {
+func (b *Bot) ShowResourceTypes(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "resource_types"})
-	b.SendMessage(chatID, "📦 Use /get <resource> to list resources.\nTypes: pods, deployments, services, replicasets, namespaces, nodes, configmaps, secrets, pvcs, pvs, ingresses, events")
+	b.tgBot.SendText(ctx, chatID, "📦 Use /get <resource> to list resources.\nTypes: pods, deployments, services, replicasets, namespaces, nodes, configmaps, secrets, pvcs, pvs, ingresses, events", "HTML", nil)
 }
 
-func (b *Bot) ShowMonitor(chatID int64, session *types.UserSession) {
+func (b *Bot) ShowMonitor(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "monitor"})
-	b.SendMessage(chatID, "📊 Monitoring\n• /top pods|nodes\n• /events\n• /watch <resource>")
+	b.tgBot.SendText(ctx, chatID, "📊 Monitoring\n• /top pods|nodes\n• /events\n• /watch <resource>", "HTML", nil)
 }
 
-func (b *Bot) ShowOperations(chatID int64, session *types.UserSession) {
+func (b *Bot) ShowOperations(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "operations"})
-	b.SendMessage(chatID, "🔧 Operations\n• /restart deployment <name>\n• /scale deployment <name> <replicas>")
+	b.tgBot.SendText(ctx, chatID, "🔧 Operations\n• /restart deployment <name>\n• /scale deployment <name> <replicas>", "HTML", nil)
 }
 
-func (b *Bot) ShowSettings(chatID int64, session *types.UserSession) {
+func (b *Bot) ShowSettings(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "settings"})
-	b.SendMessage(chatID, "⚙️ Settings\nUse /config to view current configuration.")
+	b.tgBot.SendText(ctx, chatID, "⚙️ Settings\nUse /config to view current configuration.", "HTML", nil)
 }
 
 func (b *Bot) getOrCreateSession(userID int64) *types.UserSession {
@@ -311,8 +335,6 @@ func (b *Bot) getOrCreateSession(userID int64) *types.UserSession {
 	return val.(*types.UserSession)
 }
 
-// --- k8s helper methods used by menu callbacks ---
-
 func (b *Bot) getGVR(resourceType string) *schema.GroupVersionResource {
 	if gvr, ok := types.ResourceMap[resourceType]; ok {
 		v := gvr.GVR()
@@ -322,7 +344,6 @@ func (b *Bot) getGVR(resourceType string) *schema.GroupVersionResource {
 }
 
 func (b *Bot) listResourcesForMenu(ctx context.Context, resourceType, namespace string) ([]types.MenuState, error) {
-	// Placeholder — the real list call goes through k8s.Client
 	_ = ctx
 	_ = namespace
 	return nil, nil
@@ -332,15 +353,76 @@ func (b *Bot) deleteResourceForMenu(ctx context.Context, gvr schema.GroupVersion
 	return b.k8sClient.DeleteResource(ctx, gvr, namespace, name, &metav1.DeleteOptions{})
 }
 
-// formatLogs reads logs from an io.Reader and formats them.
-func formatLogs(reader io.Reader, tail int) string {
-	logs, err := io.ReadAll(reader)
-	if err != nil {
-		return fmt.Sprintf("error reading logs: %s", err)
-	}
-	return formatters.FormatPodLogs(string(logs), tail)
+func (b *Bot) SendMessage(chatID int64, text string) {
+	ctx := context.Background()
+	b.tgBot.SendText(ctx, chatID, text, "HTML", nil)
 }
 
-// unused guards to keep imports referenced if other files are trimmed later
-var _ = strconv.Itoa
-var _ = io.ReadAll
+func (b *Bot) SendLongMessage(chatID int64, text string) {
+	ctx := context.Background()
+	b.tgBot.SendText(ctx, chatID, text, "HTML", nil)
+}
+
+func (b *Bot) SendMarkdown(chatID int64, text string) {
+	ctx := context.Background()
+	b.tgBot.SendText(ctx, chatID, text, "MarkdownV2", nil)
+}
+
+func (b *Bot) SendText(chatID int64, text string) {
+	ctx := context.Background()
+	b.tgBot.SendText(ctx, chatID, text, "HTML", nil)
+}
+
+func (b *Bot) SendTextFull(chatID int64, text string, parseMode string, keyboard *tg.InlineKeyboardMarkup) {
+	ctx := context.Background()
+	b.tgBot.SendText(ctx, chatID, text, parseMode, keyboard)
+}
+
+func (b *Bot) SendKeyboard(chatID int64, text string, keyboard *tg.InlineKeyboardMarkup) {
+	ctx := context.Background()
+	b.tgBot.SendText(ctx, chatID, text, "HTML", keyboard)
+}
+
+func (b *Bot) SendReplyKeyboard(chatID int64, text string, keyboard *tg.ReplyKeyboardMarkup) {
+	ctx := context.Background()
+	b.tgBot.SendText(ctx, chatID, text, "HTML", nil)
+}
+
+func (b *Bot) IsUserAllowed(userID int64) bool {
+	allowed := b.config.Telegram.AllowedUserIDs
+	if len(allowed) == 0 {
+		return true
+	}
+	for _, id := range allowed {
+		if id == userID {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *Bot) IsCommandAllowed(command string) bool {
+	allowed := b.config.Bot.AllowedCommands
+	if len(allowed) == 0 {
+		return true
+	}
+	for _, cmd := range allowed {
+		if cmd == command {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *Bot) K8sClient() interface{}      { return b.k8sClient }
+func (b *Bot) Config() interface{}         { return b.config }
+func (b *Bot) API() interface{}            { return b.libBot }
+func (b *Bot) MenuBuilder() interface{}    { return b.menuBuilder }
+func (b *Bot) Logger() interface{}         { return b.logger }
+func (b *Bot) RateLimiter() interface{}    { return b.rateLimiter }
+func (b *Bot) GetK8sClient() interface{}   { return b.k8sClient }
+func (b *Bot) GetConfig() interface{}      { return b.config }
+func (b *Bot) GetAPI() interface{}         { return b.libBot }
+func (b *Bot) GetMenuBuilder() interface{} { return b.menuBuilder }
+func (b *Bot) GetLogger() interface{}      { return b.logger }
+func (b *Bot) GetRateLimiter() interface{} { return b.rateLimiter }
