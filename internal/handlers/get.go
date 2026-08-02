@@ -39,8 +39,9 @@ func (h *GetHandler) Handle(ctx context.Context, msg *tg.Message, args []string,
 	// Parse flags
 	namespace, output, selector, fieldSelector, remaining := parseFlags(args[1:])
 
-	// Use session namespace if not specified
-	if namespace == "" && gvr.Resource != "namespaces" && gvr.Resource != "nodes" && gvr.Resource != "persistentvolumes" {
+	// Use session namespace if not specified. Cluster-scoped kinds must keep an
+	// empty namespace or the API server looks for a namespaced variant.
+	if namespace == "" && !types.IsClusterScoped(resourceArg) {
 		namespace = h.getNamespace(session, args, h.getConfig().Kubernetes.DefaultNamespace)
 	}
 
@@ -86,11 +87,25 @@ func (h *GetHandler) sendResponse(chatID int64, text string) {
 }
 
 func (h *GetHandler) sendSingleResource(chatID int64, resource *k8s.ResourceInfo, format string) {
-	output := formatters.FormatResource(resource, format)
-	h.bot.SendLongMessage(chatID, output)
+	// json/yaml/name are machine-readable formats the user explicitly asked
+	// for; only the human-facing default and wide views become rich.
+	switch format {
+	case "json", "yaml", "name":
+		h.bot.SendLongMessage(chatID, formatters.FormatResource(resource, format))
+	default:
+		h.bot.SendRich(chatID,
+			formatters.RichResource(resource, format == "wide"),
+			formatters.FormatResource(resource, format))
+	}
 }
 
 func (h *GetHandler) sendFormatted(chatID int64, resources []k8s.ResourceInfo, format string, wide bool) {
-	output := formatters.FormatResourceList(resources, format, wide)
-	h.bot.SendLongMessage(chatID, output)
+	switch format {
+	case "json", "yaml", "name":
+		h.bot.SendLongMessage(chatID, formatters.FormatResourceList(resources, format, wide))
+	default:
+		h.bot.SendRich(chatID,
+			formatters.RichResourceList(resources, wide),
+			formatters.FormatResourceList(resources, format, wide))
+	}
 }

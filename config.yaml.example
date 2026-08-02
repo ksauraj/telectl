@@ -93,3 +93,7 @@ bot:
     - "watch"
     - "restart"
     - "scale"
+    - "resources"
+    - "monitor"
+    - "operations"
+    - "settings"

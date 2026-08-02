@@ -110,8 +110,12 @@ func (h *LogsHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 		return nil
 	}
 
+	// The old text path wrapped output in ``` fences but sent it as HTML, so the
+	// fences showed up literally. The rich path emits a real code block.
 	formatted := formatters.FormatPodLogs(string(logs), 100)
-	h.sendResponse(msg.Chat.ID, fmt.Sprintf("📋 Logs for %s/%s:\n```\n%s\n```", namespace, podName, formatted))
+	h.bot.SendRich(msg.Chat.ID,
+		formatters.RichLogs(namespace+"/"+podName, opts.Container, formatted),
+		fmt.Sprintf("📋 Logs for %s/%s:\n%s", namespace, podName, formatted))
 	return nil
 }
 
@@ -131,7 +135,9 @@ func (h *LogsHandler) streamLogs(ctx context.Context, chatID int64, client *k8s.
 	}
 
 	formatted := formatters.FormatPodLogs(string(logs), 200)
-	h.bot.SendText(chatID, fmt.Sprintf("📋 Logs for %s/%s (last 200 lines):\n```\n%s\n```", opts.Namespace, opts.PodName, formatted))
+	h.bot.SendRich(chatID,
+		formatters.RichLogs(opts.Namespace+"/"+opts.PodName, opts.Container, formatted),
+		fmt.Sprintf("📋 Logs for %s/%s (last 200 lines):\n%s", opts.Namespace, opts.PodName, formatted))
 	return nil
 }
 

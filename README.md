@@ -122,6 +122,10 @@ docker run --rm -it \
 
 ### Interactive Menu System
 
+telectl can be driven entirely by tapping buttons — no command syntax needed.
+See **[docs/MENU_GUIDE.md](docs/MENU_GUIDE.md)** for the full walkthrough:
+navigation model, every button, deletion confirmation, and troubleshooting.
+
 **Start the bot and use the menu:**
 ```
 /start

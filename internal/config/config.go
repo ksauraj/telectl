@@ -207,11 +207,15 @@ func setDefaults() {
 	viper.SetDefault("bot.enable_menu_button", true)
 	viper.SetDefault("bot.enable_reply_keyboard", true)
 	viper.SetDefault("bot.menu_page_size", 10)
+	// Must stay in sync with the handlers registered in bot.registerHandlers.
+	// A command missing here is rejected with "not allowed" even though a
+	// handler exists; note the key is "portforward", not "port-forward".
 	viper.SetDefault("bot.allowed_commands", []string{
 		"start", "help", "version",
-		"get", "describe", "logs", "exec", "port-forward",
+		"get", "describe", "logs", "exec", "portforward",
 		"contexts", "use-context", "config",
-		"top", "events", "watch",
+		"top", "events", "watch", "restart", "scale",
+		"resources", "monitor", "operations", "settings",
 	})
 }
 
@@ -276,9 +280,10 @@ func CreateDefaultConfig(path string) error {
 			MenuPageSize:        10,
 			AllowedCommands: []string{
 				"start", "help", "version",
-				"get", "describe", "logs", "exec", "port-forward",
+				"get", "describe", "logs", "exec", "portforward",
 				"contexts", "use-context", "config",
-				"top", "events", "watch",
+				"top", "events", "watch", "restart", "scale",
+				"resources", "monitor", "operations", "settings",
 			},
 		},
 	}

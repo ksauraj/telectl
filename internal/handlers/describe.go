@@ -35,7 +35,13 @@ func (h *DescribeHandler) Handle(ctx context.Context, msg *tg.Message, args []st
 		return nil
 	}
 
-	namespace := h.getNamespace(session, args[2:], h.getConfig().Kubernetes.DefaultNamespace)
+	// Cluster-scoped kinds must be queried with an empty namespace. Defaulting
+	// them to "default" makes the API server look for a namespaced variant that
+	// does not exist ("the server could not find the requested resource").
+	namespace := ""
+	if !types.IsClusterScoped(resourceArg) {
+		namespace = h.getNamespace(session, args[2:], h.getConfig().Kubernetes.DefaultNamespace)
+	}
 
 	client := h.getK8sClient()
 	resource, err := client.GetResource(ctx, schema.GroupVersionResource{
@@ -58,6 +64,9 @@ func (h *DescribeHandler) sendResponse(chatID int64, text string) {
 }
 
 func (h *DescribeHandler) sendSingleResource(chatID int64, resource *k8s.ResourceInfo, format string) {
-	output := formatters.FormatResource(resource, format)
-	h.bot.SendLongMessage(chatID, output)
+	// Describe output is long, so the rich rendering puts labels, annotations
+	// and raw details behind collapsible sections.
+	h.bot.SendRich(chatID,
+		formatters.RichResource(resource, format == "wide"),
+		formatters.FormatResource(resource, format))
 }

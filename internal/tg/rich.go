@@ -1,8 +1,11 @@
 package tg
 
-type InputRichMessage struct {
-	Blocks []RichBlock
-}
+// The Bot API models a *received* rich message as a tree of blocks
+// (models.RichMessage). Sending uses models.InputRichMessage, which takes a
+// markup string — see richdoc.go for the builder and bot.go for the send path.
+//
+// These types are retained for parsing inbound rich messages. Nothing in the
+// send path uses them.
 
 type RichBlockType string
 

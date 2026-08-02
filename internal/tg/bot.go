@@ -46,35 +46,43 @@ func NewRealBot(token string, opts ...bottg.Option) (*RealBot, error) {
 	return &RealBot{b: b, raw: NewBotClient(token), token: token}, nil
 }
 
-func (r *RealBot) SendRich(ctx context.Context, chatID int64, blocks []RichBlock, keyboard *InlineKeyboardMarkup) (*Message, error) {
-	payload := map[string]interface{}{
-		"chat_id":      chatID,
-		"rich_message": map[string]interface{}{"blocks": toModelBlocks(blocks)},
+// SendRich sends a Rich Message (Bot API 10.1+), which renders tables,
+// headings and dividers natively instead of as monospace text.
+//
+// The previous implementation posted {"rich_message":{"blocks":[...]}} by hand.
+// That is the *receive* shape (models.RichMessage); the send type
+// models.InputRichMessage takes a markup string, so the old payload could never
+// have worked. It was also never called from anywhere.
+func (r *RealBot) SendRich(ctx context.Context, chatID int64, markdown string, keyboard *InlineKeyboardMarkup) (*Message, error) {
+	params := &bottg.SendRichMessageParams{
+		ChatID:      chatID,
+		RichMessage: botmodels.InputRichMessage{Markdown: markdown},
 	}
 	if keyboard != nil {
-		payload["reply_markup"] = keyboard
+		params.ReplyMarkup = toModelInlineKeyboard(keyboard)
 	}
-	var result botmodels.Message
-	if err := r.rawCall(ctx, "sendRichMessage", payload, &result); err != nil {
+	msg, err := r.b.SendRichMessage(ctx, params)
+	if err != nil {
 		return nil, err
 	}
-	return fromModelMessage(&result), nil
+	return fromModelMessage(msg), nil
 }
 
-func (r *RealBot) EditRich(ctx context.Context, chatID int64, messageID int, blocks []RichBlock, keyboard *InlineKeyboardMarkup) (*Message, error) {
-	payload := map[string]interface{}{
-		"chat_id":      chatID,
-		"message_id":   messageID,
-		"rich_message": map[string]interface{}{"blocks": toModelBlocks(blocks)},
+// EditRich replaces an existing message with rich content.
+func (r *RealBot) EditRich(ctx context.Context, chatID int64, messageID int, markdown string, keyboard *InlineKeyboardMarkup) (*Message, error) {
+	params := &bottg.EditMessageTextParams{
+		ChatID:      chatID,
+		MessageID:   messageID,
+		RichMessage: &botmodels.InputRichMessage{Markdown: markdown},
 	}
 	if keyboard != nil {
-		payload["reply_markup"] = keyboard
+		params.ReplyMarkup = toModelInlineKeyboard(keyboard)
 	}
-	var result botmodels.Message
-	if err := r.rawCall(ctx, "editMessageText", payload, &result); err != nil {
+	msg, err := r.b.EditMessageText(ctx, params)
+	if err != nil {
 		return nil, err
 	}
-	return fromModelMessage(&result), nil
+	return fromModelMessage(msg), nil
 }
 
 func (r *RealBot) rawCall(ctx context.Context, method string, payload map[string]interface{}, result interface{}) error {
@@ -99,39 +107,79 @@ func (r *RealBot) rawCall(ctx context.Context, method string, payload map[string
 	return json.Unmarshal(wrapper.Result, result)
 }
 
+// EditText replaces the text and inline keyboard of an existing message. Used
+// for single-pane menu navigation so drilling into a menu does not spam the chat.
+func (r *RealBot) EditText(ctx context.Context, chatID int64, messageID int, text string, parseMode string, keyboard *InlineKeyboardMarkup) (*Message, error) {
+	params := &bottg.EditMessageTextParams{
+		ChatID:    chatID,
+		MessageID: messageID,
+		Text:      text,
+		ParseMode: toModelParseMode(parseMode),
+	}
+	if keyboard != nil {
+		params.ReplyMarkup = toModelInlineKeyboard(keyboard)
+	}
+	msg, err := r.b.EditMessageText(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	return fromModelMessage(msg), nil
+}
+
 func (r *RealBot) EditKeyboard(ctx context.Context, chatID int64, messageID int, keyboard *InlineKeyboardMarkup) error {
 	payload := map[string]interface{}{
 		"chat_id":      chatID,
 		"message_id":   messageID,
-		"reply_markup": keyboard,
+		"reply_markup": toModelInlineKeyboard(keyboard),
 	}
 	var result botmodels.Message
 	return r.rawCall(ctx, "editMessageReplyMarkup", payload, &result)
 }
 
 func (r *RealBot) SendText(ctx context.Context, chatID int64, text string, parseMode string, keyboard *InlineKeyboardMarkup) (*Message, error) {
-	var pm botmodels.ParseMode
-	switch parseMode {
-	case "HTML":
-		pm = botmodels.ParseModeHTML
-	case "MarkdownV2":
-		pm = botmodels.ParseModeMarkdown
-	default:
-		pm = botmodels.ParseModeHTML
-	}
 	params := &bottg.SendMessageParams{
 		ChatID:    chatID,
 		Text:      text,
-		ParseMode: pm,
+		ParseMode: toModelParseMode(parseMode),
 	}
 	if keyboard != nil {
-		params.ReplyMarkup = keyboard
+		params.ReplyMarkup = toModelInlineKeyboard(keyboard)
 	}
 	msg, err := r.b.SendMessage(ctx, params)
 	if err != nil {
 		return nil, err
 	}
 	return fromModelMessage(msg), nil
+}
+
+// SendTextReplyKeyboard sends text with a persistent reply keyboard attached.
+func (r *RealBot) SendTextReplyKeyboard(ctx context.Context, chatID int64, text string, parseMode string, keyboard *ReplyKeyboardMarkup) (*Message, error) {
+	params := &bottg.SendMessageParams{
+		ChatID:    chatID,
+		Text:      text,
+		ParseMode: toModelParseMode(parseMode),
+	}
+	if keyboard != nil {
+		params.ReplyMarkup = toModelReplyKeyboard(keyboard)
+	}
+	msg, err := r.b.SendMessage(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	return fromModelMessage(msg), nil
+}
+
+func toModelParseMode(parseMode string) botmodels.ParseMode {
+	switch parseMode {
+	case "HTML":
+		return botmodels.ParseModeHTML
+	case "MarkdownV2":
+		return botmodels.ParseModeMarkdown
+	case "Markdown":
+		return botmodels.ParseModeMarkdownV1
+	default:
+		return botmodels.ParseModeHTML
+	}
 }
 
 func (r *RealBot) GetMe(ctx context.Context) (*botmodels.User, error) {

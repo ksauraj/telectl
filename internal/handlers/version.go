@@ -6,6 +6,7 @@ import (
 
 	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
+	"github.com/ksauraj/telectl/internal/utils/formatters"
 )
 
 type VersionHandler struct {
@@ -22,18 +23,21 @@ func (h *VersionHandler) Handle(ctx context.Context, msg *tg.Message, args []str
 		version = "unknown"
 	}
 
-	info := fmt.Sprintf(`*k8s-telegram-bot v0.1.0*
+	pairs := [][2]string{
+		{"telectl", "v0.1.0"},
+		{"Kubernetes Server", version},
+		{"Language", "Go"},
+		{"client-go", "v0.30.5"},
+		{"Kubeconfig", h.getConfig().Kubernetes.KubeconfigPath},
+		{"Default Namespace", h.getConfig().Kubernetes.DefaultNamespace},
+		{"Dry Run", fmt.Sprintf("%v", h.getConfig().Kubernetes.DryRun)},
+	}
 
-*Kubernetes Server Version:* %s
-*Bot:* k8s-telegram-bot
-*Language:* Go
-*Client-go:* v0.30.5
+	fallback := "<b>telectl v0.1.0</b>\n"
+	for _, kv := range pairs {
+		fallback += fmt.Sprintf("• %s: %s\n", kv[0], kv[1])
+	}
 
-*Configuration:*
-• Kubeconfig: %s
-• Default Namespace: %s
-• Dry Run: %v`, version, h.getConfig().Kubernetes.KubeconfigPath, h.getConfig().Kubernetes.DefaultNamespace, h.getConfig().Kubernetes.DryRun)
-
-	h.bot.SendMarkdown(msg.Chat.ID, info)
+	h.bot.SendRich(msg.Chat.ID, formatters.RichKeyValue("🤖 telectl", pairs), fallback)
 	return nil
 }

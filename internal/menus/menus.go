@@ -1,6 +1,8 @@
 package menus
 
 import (
+	"strings"
+
 	"github.com/ksauraj/telectl/internal/config"
 	"github.com/ksauraj/telectl/internal/k8s"
 	"github.com/ksauraj/telectl/internal/tg"
@@ -10,10 +12,25 @@ import (
 // MenuBuilder builds various Telegram keyboards for the bot
 type MenuBuilder struct {
 	config *config.Config
+	tokens *TokenStore
 }
 
 func NewMenuBuilder(cfg *config.Config) *MenuBuilder {
-	return &MenuBuilder{config: cfg}
+	return &MenuBuilder{config: cfg, tokens: NewTokenStore(4096)}
+}
+
+// btn builds a callback button, routing the data through the token store so it
+// can never exceed Telegram's 64-byte callback_data limit. Every generated
+// button in this file goes through here: exceeding the limit makes Telegram
+// reject the entire keyboard with BUTTON_DATA_INVALID, not just one button.
+func (mb *MenuBuilder) btn(text, data string) tg.InlineKeyboardButton {
+	return tg.InlineButtonData(text, mb.tokens.Shorten(data))
+}
+
+// ResolveCallback expands token callback data back to its full form. Returns
+// false for a token minted before a restart, so the caller can prompt a refresh.
+func (mb *MenuBuilder) ResolveCallback(data string) (string, bool) {
+	return mb.tokens.Resolve(data)
 }
 
 // ============================================================================
@@ -138,27 +155,27 @@ func (mb *MenuBuilder) GetNamespaceReplyKeyboard(namespaces []string, currentNS 
 func (mb *MenuBuilder) GetResourceTypeInlineKeyboard() tg.InlineKeyboardMarkup {
 	return tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("📦 Pods", "menu:resource:pods"),
-			tg.InlineButtonData("🚀 Deployments", "menu:resource:deployments"),
-			tg.InlineButtonData("🔌 Services", "menu:resource:services"),
+			mb.btn("📦 Pods", "menu:resource:pods"),
+			mb.btn("🚀 Deployments", "menu:resource:deployments"),
+			mb.btn("🔌 Services", "menu:resource:services"),
 		),
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("📋 ReplicaSets", "menu:resource:replicasets"),
-			tg.InlineButtonData("📁 Namespaces", "menu:resource:namespaces"),
-			tg.InlineButtonData("🖥️ Nodes", "menu:resource:nodes"),
+			mb.btn("📋 ReplicaSets", "menu:resource:replicasets"),
+			mb.btn("📁 Namespaces", "menu:resource:namespaces"),
+			mb.btn("🖥️ Nodes", "menu:resource:nodes"),
 		),
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("⚙️ ConfigMaps", "menu:resource:configmaps"),
-			tg.InlineButtonData("🔐 Secrets", "menu:resource:secrets"),
-			tg.InlineButtonData("💾 PVCs", "menu:resource:pvcs"),
+			mb.btn("⚙️ ConfigMaps", "menu:resource:configmaps"),
+			mb.btn("🔐 Secrets", "menu:resource:secrets"),
+			mb.btn("💾 PVCs", "menu:resource:pvcs"),
 		),
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("🌐 Ingresses", "menu:resource:ingresses"),
-			tg.InlineButtonData("📅 Events", "menu:resource:events"),
-			tg.InlineButtonData("💾 PVs", "menu:resource:pvs"),
+			mb.btn("🌐 Ingresses", "menu:resource:ingresses"),
+			mb.btn("📅 Events", "menu:resource:events"),
+			mb.btn("💾 PVs", "menu:resource:pvs"),
 		),
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("🔙 Main Menu", "menu:main"),
+			mb.btn("🔙 Main Menu", "menu:main"),
 		),
 	)
 }
@@ -177,7 +194,7 @@ func (mb *MenuBuilder) GetResourceListInlineKeyboard(resourceType string, resour
 	for i := start; i < end; i += 2 {
 		var row []tg.InlineKeyboardButton
 		r1 := resources[i]
-		btn1 := tg.InlineButtonData(
+		btn1 := mb.btn(
 			mb.formatResourceButton(r1),
 			"menu:resource:view:"+resourceType+":"+r1.Namespace+":"+r1.Name,
 		)
@@ -185,7 +202,7 @@ func (mb *MenuBuilder) GetResourceListInlineKeyboard(resourceType string, resour
 
 		if i+1 < end {
 			r2 := resources[i+1]
-			btn2 := tg.InlineButtonData(
+			btn2 := mb.btn(
 				mb.formatResourceButton(r2),
 				"menu:resource:view:"+resourceType+":"+r2.Namespace+":"+r2.Name,
 			)
@@ -199,16 +216,16 @@ func (mb *MenuBuilder) GetResourceListInlineKeyboard(resourceType string, resour
 	totalPages := (len(resources) + pageSize - 1) / pageSize
 
 	if page > 0 {
-		paginationRow = append(paginationRow, tg.InlineButtonData("⬅️ Prev", "menu:resource:page:"+resourceType+":"+namespace+":"+intToString(page-1)))
+		paginationRow = append(paginationRow, mb.btn("⬅️ Prev", "menu:resource:page:"+resourceType+":"+namespace+":"+intToString(page-1)))
 	}
 
-	paginationRow = append(paginationRow, tg.InlineButtonData(
+	paginationRow = append(paginationRow, mb.btn(
 		"📄 "+intToString(page+1)+"/"+intToString(totalPages),
 		"menu:noop",
 	))
 
 	if page+1 < totalPages {
-		paginationRow = append(paginationRow, tg.InlineButtonData("Next ➡️", "menu:resource:page:"+resourceType+":"+namespace+":"+intToString(page+1)))
+		paginationRow = append(paginationRow, mb.btn("Next ➡️", "menu:resource:page:"+resourceType+":"+namespace+":"+intToString(page+1)))
 	}
 
 	if len(paginationRow) > 1 {
@@ -217,9 +234,9 @@ func (mb *MenuBuilder) GetResourceListInlineKeyboard(resourceType string, resour
 
 	// Action row
 	rows = append(rows, tg.InlineKeyboardRow(
-		tg.InlineButtonData("🔄 Refresh", "menu:resource:refresh:"+resourceType+":"+namespace),
-		tg.InlineButtonData("🏷️ Filter", "menu:resource:filter:"+resourceType+":"+namespace),
-		tg.InlineButtonData("🔙 Types", "menu:resource:types"),
+		mb.btn("🔄 Refresh", "menu:resource:refresh:"+resourceType+":"+namespace),
+		mb.btn(nsButtonLabel(namespace), "menu:ns:pick:"+resourceType),
+		mb.btn("🔙 Types", "menu:resource:types"),
 	))
 
 	return tg.InlineKeyboard(rows...)
@@ -253,17 +270,17 @@ func (mb *MenuBuilder) GetResourceActionInlineKeyboard(resourceType, namespace, 
 
 	// Common actions for all resources
 	rows = append(rows, tg.InlineKeyboardRow(
-		tg.InlineButtonData("📝 Describe", "menu:action:describe:"+resourceType+":"+namespace+":"+name),
-		tg.InlineButtonData("🗑️ Delete", "menu:action:delete:"+resourceType+":"+namespace+":"+name),
+		mb.btn("📝 Describe", "menu:action:describe:"+resourceType+":"+namespace+":"+name),
+		mb.btn("🗑️ Delete", "menu:action:delete:"+resourceType+":"+namespace+":"+name),
 	))
 
 	// Resource-specific actions
 	switch resourceType {
 	case "pods":
 		rows = append(rows, tg.InlineKeyboardRow(
-			tg.InlineButtonData("📋 Logs", "menu:action:logs:"+namespace+":"+name),
-			tg.InlineButtonData("🖥️ Exec", "menu:action:exec:"+namespace+":"+name),
-			tg.InlineButtonData("🔌 Port Forward", "menu:action:portforward:"+namespace+":"+name),
+			mb.btn("📋 Logs", "menu:action:logs:"+namespace+":"+name),
+			mb.btn("🖥️ Exec", "menu:action:exec:"+namespace+":"+name),
+			mb.btn("🔌 Port Forward", "menu:action:portforward:"+namespace+":"+name),
 		))
 		if resource != nil {
 			// Add container selection if multiple containers
@@ -272,7 +289,7 @@ func (mb *MenuBuilder) GetResourceActionInlineKeyboard(resourceType, namespace, 
 				for _, c := range containers {
 					if container, ok := c.(map[string]interface{}); ok {
 						if cName, ok := container["name"].(string); ok {
-							containerRow = append(containerRow, tg.InlineButtonData("📋 "+cName, "menu:action:logs:"+namespace+":"+name+":"+cName))
+							containerRow = append(containerRow, mb.btn("📋 "+cName, "menu:action:logs:"+namespace+":"+name+":"+cName))
 						}
 					}
 				}
@@ -284,50 +301,50 @@ func (mb *MenuBuilder) GetResourceActionInlineKeyboard(resourceType, namespace, 
 
 	case "deployments":
 		rows = append(rows, tg.InlineKeyboardRow(
-			tg.InlineButtonData("🔄 Restart", "menu:action:restart:"+namespace+":"+name),
-			tg.InlineButtonData("📈 Scale", "menu:action:scale:"+namespace+":"+name),
-			tg.InlineButtonData("📋 Pods", "menu:action:pods:"+namespace+":"+name),
+			mb.btn("🔄 Restart", "menu:action:restart:"+namespace+":"+name),
+			mb.btn("📈 Scale", "menu:action:scale:"+namespace+":"+name),
+			mb.btn("📋 Pods", "menu:action:pods:"+namespace+":"+name),
 		))
 		rows = append(rows, tg.InlineKeyboardRow(
-			tg.InlineButtonData("📝 Edit", "menu:action:edit:"+resourceType+":"+namespace+":"+name),
-			tg.InlineButtonData("📜 History", "menu:action:history:"+namespace+":"+name),
+			mb.btn("📝 Edit", "menu:action:edit:"+resourceType+":"+namespace+":"+name),
+			mb.btn("📜 History", "menu:action:history:"+namespace+":"+name),
 		))
 
 	case "services":
 		rows = append(rows, tg.InlineKeyboardRow(
-			tg.InlineButtonData("🔌 Port Forward", "menu:action:portforward:"+namespace+":"+name),
-			tg.InlineButtonData("📋 Endpoints", "menu:action:endpoints:"+namespace+":"+name),
+			mb.btn("🔌 Port Forward", "menu:action:portforward:"+namespace+":"+name),
+			mb.btn("📋 Endpoints", "menu:action:endpoints:"+namespace+":"+name),
 		))
 
 	case "nodes":
 		rows = append(rows, tg.InlineKeyboardRow(
-			tg.InlineButtonData("📊 Top", "menu:action:top:node:"+name),
-			tg.InlineButtonData("📋 Pods", "menu:action:nodepods:"+name),
-			tg.InlineButtonData("🔧 Cordon", "menu:action:cordon:"+name),
+			mb.btn("📊 Top", "menu:action:top:node:"+name),
+			mb.btn("📋 Pods", "menu:action:nodepods:"+name),
+			mb.btn("🔧 Cordon", "menu:action:cordon:"+name),
 		))
 		rows = append(rows, tg.InlineKeyboardRow(
-			tg.InlineButtonData("🔓 Uncordon", "menu:action:uncordon:"+name),
-			tg.InlineButtonData("💤 Drain", "menu:action:drain:"+name),
+			mb.btn("🔓 Uncordon", "menu:action:uncordon:"+name),
+			mb.btn("💤 Drain", "menu:action:drain:"+name),
 		))
 
 	case "namespaces":
 		rows = append(rows, tg.InlineKeyboardRow(
-			tg.InlineButtonData("📋 Resources", "menu:action:nsresources:"+name),
-			tg.InlineButtonData("🗑️ Delete", "menu:action:delete:namespace::"+name),
+			mb.btn("📋 Resources", "menu:action:nsresources:"+name),
+			mb.btn("🗑️ Delete", "menu:action:delete:namespace::"+name),
 		))
 
 	case "replicasets":
 		rows = append(rows, tg.InlineKeyboardRow(
-			tg.InlineButtonData("📋 Pods", "menu:action:rspods:"+namespace+":"+name),
-			tg.InlineButtonData("📈 Scale", "menu:action:rsscale:"+namespace+":"+name),
+			mb.btn("📋 Pods", "menu:action:rspods:"+namespace+":"+name),
+			mb.btn("📈 Scale", "menu:action:rsscale:"+namespace+":"+name),
 		))
 	}
 
 	// Navigation
 	rows = append(rows, tg.InlineKeyboardRow(
-		tg.InlineButtonData("🔄 Refresh", "menu:resource:view:"+resourceType+":"+namespace+":"+name),
-		tg.InlineButtonData("🔙 List", "menu:resource:list:"+resourceType+":"+namespace),
-		tg.InlineButtonData("🏠 Main", "menu:main"),
+		mb.btn("🔄 Refresh", "menu:resource:view:"+resourceType+":"+namespace+":"+name),
+		mb.btn("🔙 List", "menu:resource:list:"+resourceType+":"+namespace),
+		mb.btn("🏠 Main", "menu:main"),
 	))
 
 	return tg.InlineKeyboard(rows...)
@@ -343,31 +360,110 @@ func (mb *MenuBuilder) GetContextsInlineKeyboard(contexts []kubeconfig.ContextIn
 			label = "✅ " + label
 		}
 		rows = append(rows, tg.InlineKeyboardRow(
-			tg.InlineButtonData(label, "menu:ctx:switch:"+ctx.Name),
+			mb.btn(label, "menu:ctx:switch:"+ctx.Name),
 		))
 	}
 
 	rows = append(rows, tg.InlineKeyboardRow(
-		tg.InlineButtonData("🔄 Refresh", "menu:ctx:refresh"),
-		tg.InlineButtonData("🏠 Main", "menu:main"),
+		mb.btn("🔄 Refresh", "menu:ctx:refresh"),
+		mb.btn("🏠 Main", "menu:main"),
 	))
 
 	return tg.InlineKeyboard(rows...)
 }
 
 // GetMonitorInlineKeyboard returns inline keyboard for monitoring
+// GetNamespaceInlineKeyboard returns a paginated namespace picker. The active
+// namespace is marked, and "All Namespaces" clears the filter. backTo is the
+// callback to return to (e.g. "menu:settings:home" or a resource list).
+func (mb *MenuBuilder) GetNamespaceInlineKeyboard(namespaces []string, current string, page int, backTo string) tg.InlineKeyboardMarkup {
+	const perPage = 9 // 3 rows of 3 keeps labels readable on mobile
+
+	var rows [][]tg.InlineKeyboardButton
+
+	allLabel := "🌐 All Namespaces"
+	if current == "" {
+		allLabel = "✅ 🌐 All Namespaces"
+	}
+	rows = append(rows, tg.InlineKeyboardRow(mb.btn(allLabel, "menu:ns:set:")))
+
+	start := page * perPage
+	if start > len(namespaces) {
+		start = len(namespaces)
+	}
+	end := start + perPage
+	if end > len(namespaces) {
+		end = len(namespaces)
+	}
+
+	var row []tg.InlineKeyboardButton
+	for _, ns := range namespaces[start:end] {
+		label := ns
+		if ns == current {
+			label = "✅ " + ns
+		}
+		row = append(row, mb.btn(label, "menu:ns:set:"+ns))
+		if len(row) == 3 {
+			rows = append(rows, row)
+			row = nil
+		}
+	}
+	if len(row) > 0 {
+		rows = append(rows, row)
+	}
+
+	totalPages := (len(namespaces) + perPage - 1) / perPage
+	if totalPages > 1 {
+		var nav []tg.InlineKeyboardButton
+		if page > 0 {
+			nav = append(nav, mb.btn("⬅️ Prev", "menu:ns:page:"+intToString(page-1)))
+		}
+		nav = append(nav, mb.btn("📄 "+intToString(page+1)+"/"+intToString(totalPages), "menu:noop"))
+		if page+1 < totalPages {
+			nav = append(nav, mb.btn("Next ➡️", "menu:ns:page:"+intToString(page+1)))
+		}
+		rows = append(rows, nav)
+	}
+
+	if backTo == "" {
+		backTo = "menu:main"
+	}
+	rows = append(rows, tg.InlineKeyboardRow(mb.btn("🔙 Back", backTo)))
+
+	return tg.InlineKeyboard(rows...)
+}
+
+// GetMainMenuInlineKeyboard returns the top-level inline keyboard. Callback data
+// uses the same "menu:<section>[:...]" scheme every other builder here uses.
+func (mb *MenuBuilder) GetMainMenuInlineKeyboard() tg.InlineKeyboardMarkup {
+	return tg.InlineKeyboard(
+		tg.InlineKeyboardRow(
+			mb.btn("📦 Resources", "menu:resource:types"),
+			mb.btn("📊 Monitor", "menu:monitor:home"),
+		),
+		tg.InlineKeyboardRow(
+			mb.btn("🔧 Operations", "menu:ops:home"),
+			mb.btn("⚙️ Settings", "menu:settings:home"),
+		),
+		tg.InlineKeyboardRow(
+			mb.btn("❓ Help", "menu:help"),
+		),
+	)
+}
+
+// GetMonitorInlineKeyboard returns inline keyboard for monitoring
 func (mb *MenuBuilder) GetMonitorInlineKeyboard() tg.InlineKeyboardMarkup {
 	return tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("📊 Top Pods", "menu:monitor:top:pods"),
-			tg.InlineButtonData("🖥️ Top Nodes", "menu:monitor:top:nodes"),
+			mb.btn("📊 Top Pods", "menu:monitor:top:pods"),
+			mb.btn("🖥️ Top Nodes", "menu:monitor:top:nodes"),
 		),
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("📅 Events", "menu:monitor:events"),
-			tg.InlineButtonData("👁️ Watch", "menu:monitor:watch"),
+			mb.btn("📅 Events", "menu:monitor:events"),
+			mb.btn("👁️ Watch", "menu:monitor:watch"),
 		),
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("🔙 Main", "menu:main"),
+			mb.btn("🔙 Main", "menu:main"),
 		),
 	)
 }
@@ -376,15 +472,15 @@ func (mb *MenuBuilder) GetMonitorInlineKeyboard() tg.InlineKeyboardMarkup {
 func (mb *MenuBuilder) GetOperationsInlineKeyboard() tg.InlineKeyboardMarkup {
 	return tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("🔄 Restart Deployment", "menu:ops:restart"),
-			tg.InlineButtonData("📈 Scale Deployment", "menu:ops:scale"),
+			mb.btn("🔄 Restart Deployment", "menu:ops:restart"),
+			mb.btn("📈 Scale Deployment", "menu:ops:scale"),
 		),
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("🗑️ Delete Resource", "menu:ops:delete"),
-			tg.InlineButtonData("✏️ Edit Resource", "menu:ops:edit"),
+			mb.btn("🗑️ Delete Resource", "menu:ops:delete"),
+			mb.btn("✏️ Edit Resource", "menu:ops:edit"),
 		),
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("🏠 Main", "menu:main"),
+			mb.btn("🏠 Main", "menu:main"),
 		),
 	)
 }
@@ -393,15 +489,15 @@ func (mb *MenuBuilder) GetOperationsInlineKeyboard() tg.InlineKeyboardMarkup {
 func (mb *MenuBuilder) GetSettingsInlineKeyboard() tg.InlineKeyboardMarkup {
 	return tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("🌐 Namespace", "menu:settings:namespace"),
-			tg.InlineButtonData("⚙️ Context", "menu:settings:context"),
+			mb.btn("🌐 Namespace", "menu:settings:namespace"),
+			mb.btn("⚙️ Context", "menu:settings:context"),
 		),
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("🎨 Theme", "menu:settings:theme"),
-			tg.InlineButtonData("🔔 Notifications", "menu:settings:notifications"),
+			mb.btn("🎨 Theme", "menu:settings:theme"),
+			mb.btn("🔔 Notifications", "menu:settings:notifications"),
 		),
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("🏠 Main", "menu:main"),
+			mb.btn("🏠 Main", "menu:main"),
 		),
 	)
 }
@@ -410,8 +506,8 @@ func (mb *MenuBuilder) GetSettingsInlineKeyboard() tg.InlineKeyboardMarkup {
 func (mb *MenuBuilder) GetConfirmDeleteKeyboard(resourceType, namespace, name string) tg.InlineKeyboardMarkup {
 	return tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("✅ Yes, Delete", "menu:action:confirmdelete:"+resourceType+":"+namespace+":"+name),
-			tg.InlineButtonData("❌ Cancel", "menu:resource:view:"+resourceType+":"+namespace+":"+name),
+			mb.btn("✅ Yes, Delete", "menu:action:confirmdelete:"+resourceType+":"+namespace+":"+name),
+			mb.btn("❌ Cancel", "menu:resource:view:"+resourceType+":"+namespace+":"+name),
 		),
 	)
 }
@@ -428,7 +524,7 @@ func (mb *MenuBuilder) GetScaleKeyboard(namespace, name string, currentReplicas 
 		if r == currentReplicas {
 			label = "✅ " + label
 		}
-		scaleRow = append(scaleRow, tg.InlineButtonData(label, "menu:action:scaleset:"+namespace+":"+name+":"+intToString(int(r))))
+		scaleRow = append(scaleRow, mb.btn(label, "menu:action:scaleset:"+namespace+":"+name+":"+intToString(int(r))))
 		if len(scaleRow) == 3 {
 			rows = append(rows, scaleRow)
 			scaleRow = []tg.InlineKeyboardButton{}
@@ -440,8 +536,8 @@ func (mb *MenuBuilder) GetScaleKeyboard(namespace, name string, currentReplicas 
 
 	// Custom scale
 	rows = append(rows, tg.InlineKeyboardRow(
-		tg.InlineButtonData("✏️ Custom", "menu:action:scalecustom:"+namespace+":"+name),
-		tg.InlineButtonData("🔙 Back", "menu:resource:view:deployments:"+namespace+":"+name),
+		mb.btn("✏️ Custom", "menu:action:scalecustom:"+namespace+":"+name),
+		mb.btn("🔙 Back", "menu:resource:view:deployments:"+namespace+":"+name),
 	))
 
 	return tg.InlineKeyboard(rows...)
@@ -454,16 +550,16 @@ func (mb *MenuBuilder) GetLogOptionsKeyboard(namespace, name, container string) 
 
 	return tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("📋 Last 50", "menu:action:logs:"+namespace+":"+name+":"+container+":50"),
-			tg.InlineButtonData("📋 Last 100", "menu:action:logs:"+namespace+":"+name+":"+container+":100"),
-			tg.InlineButtonData("📋 Last 500", "menu:action:logs:"+namespace+":"+name+":"+container+":500"),
+			mb.btn("📋 Last 50", "menu:action:logs:"+namespace+":"+name+":"+container+":50"),
+			mb.btn("📋 Last 100", "menu:action:logs:"+namespace+":"+name+":"+container+":100"),
+			mb.btn("📋 Last 500", "menu:action:logs:"+namespace+":"+name+":"+container+":500"),
 		),
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData(followText, "menu:action:logsfollow:"+namespace+":"+name+":"+container),
-			tg.InlineButtonData("⏮️ Previous", "menu:action:logsprevious:"+namespace+":"+name+":"+container),
+			mb.btn(followText, "menu:action:logsfollow:"+namespace+":"+name+":"+container),
+			mb.btn("⏮️ Previous", "menu:action:logsprevious:"+namespace+":"+name+":"+container),
 		),
 		tg.InlineKeyboardRow(
-			tg.InlineButtonData("🔙 Back", "menu:resource:view:pods:"+namespace+":"+name),
+			mb.btn("🔙 Back", "menu:resource:view:pods:"+namespace+":"+name),
 		),
 	)
 }
@@ -569,8 +665,21 @@ func ParseCallbackData(data string) *CallbackAction {
 		if len(parts) >= 3 {
 			action.Action = parts[2] // namespace, context, theme, notifications
 		}
+		// "menu:settings:setns:<name>" carries the chosen namespace. An empty
+		// trailing field means "all namespaces".
+		if len(parts) >= 4 {
+			action.Name = strings.Join(parts[3:], ":")
+		}
 
-	case "main", "noop":
+	case "ns":
+		if len(parts) >= 3 {
+			action.Action = parts[2] // pick, set, page
+		}
+		if len(parts) >= 4 {
+			action.Name = strings.Join(parts[3:], ":")
+		}
+
+	case "main", "noop", "help":
 		// No additional data needed
 	}
 
@@ -590,6 +699,18 @@ func splitCallbackData(data string) []string {
 	}
 	parts = append(parts, current)
 	return parts
+}
+
+// nsButtonLabel renders the namespace switcher's label, truncated so the button
+// stays readable on mobile.
+func nsButtonLabel(namespace string) string {
+	if namespace == "" {
+		return "🌐 All NS"
+	}
+	if len(namespace) > 12 {
+		return "🌐 " + namespace[:11] + "…"
+	}
+	return "🌐 " + namespace
 }
 
 func intToString(i int) string {

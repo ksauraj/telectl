@@ -216,7 +216,16 @@ func (h *ExecHandler) executeCommand(ctx context.Context, msg *tg.Message, clien
 		result += fmt.Sprintf("STDERR:\n%s\n", errOutput)
 	}
 
-	h.sendResponse(msg.Chat.ID, fmt.Sprintf("🖥️ Command: %s\n```\n%s```", strings.Join(command, " "), result))
+	// Same fence-in-HTML issue as logs: send a real code block instead.
+	rich := tg.NewRichDoc()
+	rich.Heading(3, "🖥️ "+strings.Join(command, " "))
+	if result == "" {
+		rich.Paragraph("(no output)")
+	} else {
+		rich.Code("", result)
+	}
+	h.bot.SendRich(msg.Chat.ID, rich.String(),
+		fmt.Sprintf("🖥️ Command: %s\n%s", strings.Join(command, " "), result))
 	return nil
 }
 

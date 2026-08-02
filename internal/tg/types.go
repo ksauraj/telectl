@@ -7,7 +7,6 @@ type Message struct {
 	Entities []MessageEntity
 	From     *User
 	Chat     *Chat
-	Rich     *InputRichMessage
 }
 
 type User struct {

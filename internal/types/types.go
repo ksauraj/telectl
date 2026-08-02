@@ -14,6 +14,11 @@ type BotInterface interface {
 	SendMessage(chatID int64, text string)
 	SendLongMessage(chatID int64, text string)
 	SendMarkdown(chatID int64, text string)
+	SendHTML(chatID int64, text string)
+	// SendRich sends a Rich Message, falling back to the plain-text rendering
+	// if the server rejects it.
+	SendRich(chatID int64, markdown, fallback string)
+	SendRichKeyboard(chatID int64, markdown, fallback string, keyboard *tg.InlineKeyboardMarkup)
 	SendText(chatID int64, text string)
 	SendTextFull(chatID int64, text string, parseMode string, keyboard *tg.InlineKeyboardMarkup)
 	SendKeyboard(chatID int64, text string, keyboard *tg.InlineKeyboardMarkup)
@@ -70,6 +75,26 @@ type SchemaGroupVersionResource struct {
 // GVR returns the schema.GroupVersionResource for use with the dynamic client.
 func (s SchemaGroupVersionResource) GVR() schema.GroupVersionResource {
 	return schema.GroupVersionResource{Group: s.Group, Version: s.Version, Resource: s.Resource}
+}
+
+// clusterScopedResources are the plural resource names that exist outside any
+// namespace. Passing a namespace when querying these makes the API server look
+// for a namespaced variant, which does not exist, and it answers "the server
+// could not find the requested resource".
+var clusterScopedResources = map[string]bool{
+	"namespaces":        true,
+	"nodes":             true,
+	"persistentvolumes": true,
+}
+
+// IsClusterScoped reports whether a resource alias refers to a cluster-scoped
+// kind. Accepts any alias in ResourceMap (e.g. "ns", "no", "pv").
+func IsClusterScoped(alias string) bool {
+	gvr, ok := ResourceMap[alias]
+	if !ok {
+		return false
+	}
+	return clusterScopedResources[gvr.Resource]
 }
 
 // ResourceMap is the shared, exported resource alias map used by all handlers.

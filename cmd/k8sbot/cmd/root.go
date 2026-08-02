@@ -40,7 +40,7 @@ Built with Go for performance and reliability.`,
 		return config.InitConfig(cfgFile)
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runBot(cmd.Context())
+		return runBot(cmd.Context(), cmd)
 	},
 }
 
@@ -96,7 +96,7 @@ func initConfig() {
 	}
 }
 
-func runBot(ctx context.Context) error {
+func runBot(ctx context.Context, cmd *cobra.Command) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -114,6 +114,12 @@ func runBot(ctx context.Context) error {
 	}
 	if dryRun {
 		cfg.Kubernetes.DryRun = true
+	}
+	// Only override the configured level when the flag was actually passed, so
+	// a `logging.level` from the config file is not clobbered by the flag's
+	// own "info" default.
+	if cmd != nil && cmd.Flags().Changed("log-level") {
+		cfg.Logging.Level = logLevel
 	}
 
 	// Validate required config
@@ -234,13 +240,15 @@ func trimSpace(s string) string {
 
 func newLogger(level string) (*zap.Logger, error) {
 	var cfg zap.Config
-	switch level {
-	case "debug":
+	if level == "debug" {
 		cfg = zap.NewDevelopmentConfig()
-	case "info", "warn", "error":
+	} else {
 		cfg = zap.NewProductionConfig()
-	default:
-		cfg = zap.NewProductionConfig()
+	}
+	// Choosing the base config is not enough: production config pins the level
+	// to Info, so "warn"/"error" were silently ignored. Set it explicitly.
+	if lvl, err := zap.ParseAtomicLevel(level); err == nil {
+		cfg.Level = lvl
 	}
 	return cfg.Build()
 }

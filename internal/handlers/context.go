@@ -39,8 +39,15 @@ func (h *ContextsHandler) Handle(ctx context.Context, msg *tg.Message, args []st
 
 	mb, _ := h.bot.MenuBuilder().(*menus.MenuBuilder)
 	keyboard := mb.GetContextsInlineKeyboard(contexts)
-	output := formatters.FormatContexts(contexts)
-	h.bot.SendKeyboard(msg.Chat.ID, output, &keyboard)
+
+	rich := make([]formatters.KubeContext, 0, len(contexts))
+	for _, c := range contexts {
+		rich = append(rich, formatters.NewKubeContext(c.Name, c.Cluster, c.Namespace, c.Current))
+	}
+	h.bot.SendRichKeyboard(msg.Chat.ID,
+		formatters.RichContexts(rich),
+		formatters.FormatContexts(contexts),
+		&keyboard)
 	return nil
 }
 
@@ -105,40 +112,26 @@ func (h *ConfigHandler) Handle(ctx context.Context, msg *tg.Message, args []stri
 		parseMode = cfg.Telegram.ParseMode
 	}
 
-	out := fmt.Sprintf(`⚙️ *Bot Configuration*
+	pairs := [][2]string{
+		{"Kubeconfig", cfg.Kubernetes.KubeconfigPath},
+		{"Current Context", currentCtx},
+		{"Available Contexts", fmt.Sprintf("%d", len(kc.Contexts))},
+		{"Default Namespace", cfg.Kubernetes.DefaultNamespace},
+		{"Session Namespace", currentNS},
+		{"Dry Run Mode", fmt.Sprintf("%v", cfg.Kubernetes.DryRun)},
+		{"Bot", "@" + botUsername},
+		{"Parse Mode", parseMode},
+		{"Rate Limit", fmt.Sprintf("%d/min", cfg.Bot.RateLimit)},
+		{"Max Message Length", fmt.Sprintf("%d", cfg.Bot.MaxMessageLength)},
+		{"Command Prefix", cfg.Bot.CommandPrefix},
+	}
 
-*Kubernetes:*
-• Kubeconfig: %s
-• Current Context: %s
-• Available Contexts: %d
-• Default Namespace: %s
-• Session Namespace: %s
-• Dry Run Mode: %v
+	fallback := "⚙️ Bot Configuration\n"
+	for _, kv := range pairs {
+		fallback += fmt.Sprintf("• %s: %s\n", kv[0], kv[1])
+	}
 
-*Telegram:*
-• Bot: @%s
-• Parse Mode: %s
-• Rate Limit: %d/min
-
-*Bot Settings:*
-• Max Message Length: %d
-• Command Prefix: %s
-• Markdown Enabled: %v`,
-		cfg.Kubernetes.KubeconfigPath,
-		currentCtx,
-		len(kc.Contexts),
-		cfg.Kubernetes.DefaultNamespace,
-		currentNS,
-		cfg.Kubernetes.DryRun,
-		botUsername,
-		parseMode,
-		cfg.Bot.RateLimit,
-		cfg.Bot.MaxMessageLength,
-		cfg.Bot.CommandPrefix,
-		cfg.Bot.EnableMarkdown,
-	)
-
-	h.bot.SendMarkdown(msg.Chat.ID, out)
+	h.bot.SendRich(msg.Chat.ID, formatters.RichKeyValue("⚙️ Bot Configuration", pairs), fallback)
 	return nil
 }
 

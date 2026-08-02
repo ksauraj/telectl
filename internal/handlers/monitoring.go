@@ -59,7 +59,9 @@ func (h *TopHandler) topPods(ctx context.Context, msg *tg.Message, client *k8s.C
 			return err
 		}
 
-		h.sendResponse(msg.Chat.ID, fmt.Sprintf("⚠️ Metrics server not available. Showing pod list instead:\n\n%s", formatters.FormatResourceList(pods, "wide", true)))
+		h.bot.SendRich(msg.Chat.ID,
+			"> ⚠️ metrics-server not available — showing the pod list instead.\n\n"+formatters.RichResourceList(pods, true),
+			fmt.Sprintf("⚠️ Metrics server not available. Showing pod list instead:\n\n%s", formatters.FormatResourceList(pods, "wide", true)))
 		return nil
 	}
 
@@ -71,8 +73,9 @@ func (h *TopHandler) topPods(ctx context.Context, msg *tg.Message, client *k8s.C
 		}
 	}
 
-	output := formatters.FormatResourceList(resources, "wide", true)
-	h.sendResponse(msg.Chat.ID, fmt.Sprintf("📊 Pod Resource Usage (%s):\n%s", sortBy, output))
+	h.bot.SendRich(msg.Chat.ID,
+		formatters.RichMetrics(fmt.Sprintf("📊 Pod Resource Usage (sorted by %s)", sortBy), resources),
+		fmt.Sprintf("📊 Pod Resource Usage (%s):\n%s", sortBy, formatters.FormatResourceList(resources, "wide", true)))
 	return nil
 }
 
@@ -88,12 +91,15 @@ func (h *TopHandler) topNodes(ctx context.Context, msg *tg.Message, client *k8s.
 		if err != nil {
 			return err
 		}
-		h.sendResponse(msg.Chat.ID, fmt.Sprintf("⚠️ Metrics server not available. Showing node list:\n\n%s", formatters.FormatResourceList(nodes, "wide", true)))
+		h.bot.SendRich(msg.Chat.ID,
+			"> ⚠️ metrics-server not available — showing the node list instead.\n\n"+formatters.RichResourceList(nodes, true),
+			fmt.Sprintf("⚠️ Metrics server not available. Showing node list:\n\n%s", formatters.FormatResourceList(nodes, "wide", true)))
 		return nil
 	}
 
-	output := formatters.FormatResourceList(resources, "wide", true)
-	h.sendResponse(msg.Chat.ID, fmt.Sprintf("📊 Node Resource Usage:\n%s", output))
+	h.bot.SendRich(msg.Chat.ID,
+		formatters.RichMetrics("📊 Node Resource Usage", resources),
+		fmt.Sprintf("📊 Node Resource Usage:\n%s", formatters.FormatResourceList(resources, "wide", true)))
 	return nil
 }
 
@@ -123,10 +129,9 @@ func (h *EventsHandler) Handle(ctx context.Context, msg *tg.Message, args []stri
 		return nil
 	}
 
-	// Sort by timestamp (newest first) and limit
-	// For now just show all
-	output := formatters.FormatResourceList(events, "wide", true)
-	h.sendResponse(msg.Chat.ID, fmt.Sprintf("📅 Events in %s:\n%s", namespace, output))
+	h.bot.SendRich(msg.Chat.ID,
+		formatters.RichEvents(events),
+		fmt.Sprintf("📅 Events in %s:\n%s", namespace, formatters.FormatResourceList(events, "wide", true)))
 	return nil
 }
 
