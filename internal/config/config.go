@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -98,6 +99,41 @@ func InitConfig(configFile string) error {
 	_ = viper.BindEnv("kubernetes.kubeconfig_path", "KUBECONFIG")
 	_ = viper.BindEnv("telegram.allowed_user_ids", "ALLOWED_USER_IDS")
 	_ = viper.BindEnv("telegram.admin_user_ids", "ADMIN_USER_IDS")
+
+	// Manually parse comma-separated env vars into []int64 since
+	// viper doesn't auto-split comma-separated strings into []int64
+	if val := os.Getenv("ALLOWED_USER_IDS"); val != "" {
+		parts := strings.Split(val, ",")
+		ids := make([]int64, 0, len(parts))
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			if id, err := strconv.ParseInt(p, 10, 64); err == nil {
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) > 0 {
+			viper.Set("telegram.allowed_user_ids", ids)
+		}
+	}
+	if val := os.Getenv("ADMIN_USER_IDS"); val != "" {
+		parts := strings.Split(val, ",")
+		ids := make([]int64, 0, len(parts))
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			if id, err := strconv.ParseInt(p, 10, 64); err == nil {
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) > 0 {
+			viper.Set("telegram.admin_user_ids", ids)
+		}
+	}
 
 	setDefaults()
 
