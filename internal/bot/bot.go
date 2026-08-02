@@ -149,7 +149,15 @@ func (b *Bot) handleMessage(ctx context.Context, bot *bottg.Bot, update *botmode
 	userID := msg.From.ID
 	chatID := msg.Chat.ID
 
+	b.logger.Debug("Received message",
+		zap.Int64("user_id", userID),
+		zap.Int64("chat_id", chatID),
+		zap.String("text", msg.Text),
+		zap.String("username", msg.From.Username),
+	)
+
 	if !b.IsUserAllowed(userID) {
+		b.logger.Debug("User not allowed", zap.Int64("user_id", userID))
 		if _, err := b.tgBot.SendText(ctx, chatID, "❌ You are not authorized to use this bot.", "HTML", nil); err != nil {
 			b.logger.Error("Failed to send unauthorized message", zap.Error(err), zap.Int64("chat_id", chatID))
 		}
@@ -172,6 +180,7 @@ func (b *Bot) handleMessage(ctx context.Context, bot *bottg.Bot, update *botmode
 	}
 
 	if strings.HasPrefix(msg.Text, "/") {
+		b.logger.Debug("Processing command", zap.String("command", msg.Text))
 		b.handleCommand(ctx, msg, session)
 	} else if session.IsInExecMode() {
 		b.handleExecInput(ctx, msg, session)
