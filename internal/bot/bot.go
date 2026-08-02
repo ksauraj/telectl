@@ -150,11 +150,15 @@ func (b *Bot) handleMessage(ctx context.Context, bot *bottg.Bot, update *botmode
 	chatID := msg.Chat.ID
 
 	if !b.IsUserAllowed(userID) {
-		b.tgBot.SendText(ctx, chatID, "❌ You are not authorized to use this bot.", "HTML", nil)
+		if _, err := b.tgBot.SendText(ctx, chatID, "❌ You are not authorized to use this bot.", "HTML", nil); err != nil {
+			b.logger.Error("Failed to send unauthorized message", zap.Error(err), zap.Int64("chat_id", chatID))
+		}
 		return
 	}
 	if !b.rateLimiter.Allow(userID) {
-		b.tgBot.SendText(ctx, chatID, "⏱️ Rate limit exceeded. Please wait a moment.", "HTML", nil)
+		if _, err := b.tgBot.SendText(ctx, chatID, "⏱️ Rate limit exceeded. Please wait a moment.", "HTML", nil); err != nil {
+			b.logger.Error("Failed to send rate limit message", zap.Error(err), zap.Int64("chat_id", chatID))
+		}
 		return
 	}
 
@@ -209,12 +213,16 @@ func (b *Bot) handleCommand(ctx context.Context, msg *botmodels.Message, session
 	cmd := strings.TrimPrefix(msg.Text, "/")
 	cmd = strings.Split(cmd, " ")[0]
 	if !b.IsCommandAllowed(cmd) {
-		b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("❌ Command /%s is not allowed.", cmd), "HTML", nil)
+		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("❌ Command /%s is not allowed.", cmd), "HTML", nil); err != nil {
+			b.logger.Error("Failed to send command not allowed", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
+		}
 		return
 	}
 	handler, ok := b.handlers[cmd]
 	if !ok {
-		b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("❌ Unknown command: /%s\nUse /help to see available commands.", cmd), "HTML", nil)
+		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("❌ Unknown command: /%s\nUse /help to see available commands.", cmd), "HTML", nil); err != nil {
+			b.logger.Error("Failed to send unknown command", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
+		}
 		return
 	}
 	args := strings.Fields(msg.Text)[1:]
@@ -226,7 +234,9 @@ func (b *Bot) handleCommand(ctx context.Context, msg *botmodels.Message, session
 		Chat:   &tg.Chat{ID: msg.Chat.ID, Type: string(msg.Chat.Type), Title: msg.Chat.Title},
 	}, args, session); err != nil {
 		b.logger.Error("Command failed", zap.String("cmd", cmd), zap.Error(err))
-		b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("❌ Error: %s", err.Error()), "HTML", nil)
+		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("❌ Error: %s", err.Error()), "HTML", nil); err != nil {
+			b.logger.Error("Failed to send command error", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
+		}
 	}
 }
 
@@ -250,7 +260,9 @@ func (b *Bot) handleCallbackQuery(ctx context.Context, bot *bottg.Bot, update *b
 	} else {
 		return
 	}
-	b.tgBot.SendText(ctx, chatID, fmt.Sprintf("🔘 Callback: %s", callback.Data), "HTML", nil)
+	if _, err := b.tgBot.SendText(ctx, chatID, fmt.Sprintf("🔘 Callback: %s", callback.Data), "HTML", nil); err != nil {
+		b.logger.Error("Failed to send callback response", zap.Error(err), zap.Int64("chat_id", chatID))
+	}
 }
 
 func (b *Bot) handleReplyKeyboard(ctx context.Context, msg *botmodels.Message, session *types.UserSession) bool {
@@ -260,10 +272,14 @@ func (b *Bot) handleReplyKeyboard(ctx context.Context, msg *botmodels.Message, s
 		b.ShowResourceTypes(ctx, msg.Chat.ID, session)
 		return true
 	case "📋 Logs", "logs":
-		b.tgBot.SendText(ctx, msg.Chat.ID, "Usage: /logs <pod> [-c container] [-n namespace] [-f] [--tail N]", "HTML", nil)
+		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID, "Usage: /logs <pod> [-c container] [-n namespace] [-f] [--tail N]", "HTML", nil); err != nil {
+			b.logger.Error("Failed to send logs usage", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
+		}
 		return true
 	case "🖥️ Exec", "exec":
-		b.tgBot.SendText(ctx, msg.Chat.ID, "Usage: /exec <pod> [-c container] -n namespace -- <command>", "HTML", nil)
+		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID, "Usage: /exec <pod> [-c container] -n namespace -- <command>", "HTML", nil); err != nil {
+			b.logger.Error("Failed to send exec usage", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
+		}
 		return true
 	case "🌐 Contexts", "contexts":
 		b.handlers["contexts"].Handle(ctx, &tg.Message{
@@ -289,7 +305,9 @@ func (b *Bot) handleReplyKeyboard(ctx context.Context, msg *botmodels.Message, s
 
 func (b *Bot) handleExecInput(ctx context.Context, msg *botmodels.Message, session *types.UserSession) {
 	pod, namespace, container := session.GetExecInfo()
-	b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("Exec in %s/%s [%s] — not fully implemented", namespace, pod, container), "HTML", nil)
+	if _, err := b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("Exec in %s/%s [%s] — not fully implemented", namespace, pod, container), "HTML", nil); err != nil {
+		b.logger.Error("Failed to send exec input message", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
+	}
 	session.ClearExecMode()
 }
 
@@ -303,27 +321,37 @@ func (b *Bot) ShowMainMenu(ctx context.Context, chatID int64, session *types.Use
 <b>Namespace:</b> %s
 
 Choose an action from the menu or use /help.`, currentCtx, currentNS)
-	b.tgBot.SendText(ctx, chatID, text, "HTML", nil)
+	if _, err := b.tgBot.SendText(ctx, chatID, text, "HTML", nil); err != nil {
+		b.logger.Error("Failed to send main menu", zap.Error(err), zap.Int64("chat_id", chatID))
+	}
 }
 
 func (b *Bot) ShowResourceTypes(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "resource_types"})
-	b.tgBot.SendText(ctx, chatID, "📦 Use /get <resource> to list resources.\nTypes: pods, deployments, services, replicasets, namespaces, nodes, configmaps, secrets, pvcs, pvs, ingresses, events", "HTML", nil)
+	if _, err := b.tgBot.SendText(ctx, chatID, "📦 Use /get <resource> to list resources.\nTypes: pods, deployments, services, replicasets, namespaces, nodes, configmaps, secrets, pvcs, pvs, ingresses, events", "HTML", nil); err != nil {
+		b.logger.Error("Failed to send resource types", zap.Error(err), zap.Int64("chat_id", chatID))
+	}
 }
 
 func (b *Bot) ShowMonitor(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "monitor"})
-	b.tgBot.SendText(ctx, chatID, "📊 Monitoring\n• /top pods|nodes\n• /events\n• /watch <resource>", "HTML", nil)
+	if _, err := b.tgBot.SendText(ctx, chatID, "📊 Monitoring\n• /top pods|nodes\n• /events\n• /watch <resource>", "HTML", nil); err != nil {
+		b.logger.Error("Failed to send monitor", zap.Error(err), zap.Int64("chat_id", chatID))
+	}
 }
 
 func (b *Bot) ShowOperations(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "operations"})
-	b.tgBot.SendText(ctx, chatID, "🔧 Operations\n• /restart deployment <name>\n• /scale deployment <name> <replicas>", "HTML", nil)
+	if _, err := b.tgBot.SendText(ctx, chatID, "🔧 Operations\n• /restart deployment <name>\n• /scale deployment <name> <replicas>", "HTML", nil); err != nil {
+		b.logger.Error("Failed to send operations", zap.Error(err), zap.Int64("chat_id", chatID))
+	}
 }
 
 func (b *Bot) ShowSettings(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "settings"})
-	b.tgBot.SendText(ctx, chatID, "⚙️ Settings\nUse /config to view current configuration.", "HTML", nil)
+	if _, err := b.tgBot.SendText(ctx, chatID, "⚙️ Settings\nUse /config to view current configuration.", "HTML", nil); err != nil {
+		b.logger.Error("Failed to send settings", zap.Error(err), zap.Int64("chat_id", chatID))
+	}
 }
 
 func (b *Bot) getOrCreateSession(userID int64) *types.UserSession {
