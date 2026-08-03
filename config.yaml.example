@@ -1,24 +1,40 @@
-# telectl Configuration
-# Copy this file to ~/.config/telectl.yaml or ~/.telectl.yaml
-# Or set values via environment variables (prefix: K8SBOT_)
+# telectl configuration
+#
+# Copy to one of the searched locations:
+#   ~/.config/telectl/telectl.yaml
+#   ~/.config/telectl.yaml
+#   /etc/telectl/telectl.yaml
+# or pass an explicit path with --config.
+#
+# Any key can be overridden by an environment variable: upper-case it, replace
+# dots with underscores, and prefix with TELECTL_ —
+#   bot.rate_limit        -> TELECTL_BOT_RATE_LIMIT
+#   kubernetes.dry_run    -> TELECTL_KUBERNETES_DRY_RUN
+#
+# Credentials keep their conventional unprefixed names, listed below.
+#
+# See docs/CONFIGURATION.md for the full reference.
 
 telegram:
   # Bot token from @BotFather (required)
   # Can also be set via TELEGRAM_BOT_TOKEN env var
   bot_token: ""
 
-  # Comma-separated list of allowed user IDs (empty = allow all)
-  # Can also be set via ALLOWED_USER_IDS env var
+  # Telegram user IDs permitted to use this bot.
+  #
+  # An empty list allows EVERYONE who can find the bot to operate your
+  # cluster. Always set this in production. Get your ID from @userinfobot.
+  # Can also be set via ALLOWED_USER_IDS (comma-separated).
   allowed_user_ids: []
 
-  # Comma-separated list of admin user IDs (for admin commands)
-  # Can also be set via ADMIN_USER_IDS env var
+  # Reserved for privileged operations. Can also be set via ADMIN_USER_IDS.
   admin_user_ids: []
 
   # Message parse mode: MarkdownV2, HTML, or empty for plain text
   parse_mode: "MarkdownV2"
 
-  # Webhook configuration (optional, for webhook mode)
+  # Webhook mode is not implemented yet; telectl uses long polling.
+  # These are read but currently unused.
   webhook_url: ""
   webhook_port: 8443
 
@@ -36,14 +52,16 @@ kubernetes:
   # Request timeout in seconds
   timeout: 30
 
-  # Dry run mode - don't make actual API calls
+  # Log mutating operations instead of performing them. Replies say so
+  # explicitly, so a dry run is never mistaken for a real change.
   dry_run: false
 
-  # Impersonation settings
+  # Not implemented yet; read but unused.
   impersonate_user: ""
   impersonate_groups: []
 
-  # Client rate limiting
+  # client-go rate limiting against the API server. Distinct from
+  # bot.rate_limit below, which throttles per Telegram user.
   burst: 10
   qps: 5.0
 
@@ -75,7 +93,10 @@ bot:
   enable_reply_keyboard: true
   menu_page_size: 10
 
-  # Allowed commands (empty = all)
+  # Commands the bot will dispatch. Must stay in sync with the handlers
+  # registered in bot.registerHandlers: a command missing from this list is
+  # rejected as "not allowed" even though its handler exists. Note the key is
+  # "portforward", not "port-forward".
   allowed_commands:
     - "start"
     - "help"

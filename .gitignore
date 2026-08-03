@@ -36,3 +36,6 @@ vendor/
 tmp/
 temp/
 *.tmp
+
+# AI assistant working notes — local only, not part of the project docs.
+CLAUDE.md

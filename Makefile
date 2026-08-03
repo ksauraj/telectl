@@ -48,12 +48,20 @@ coverage: test ## Generate coverage report
 
 lint: ## Run linters
 	@echo "Running linters..."
+	@command -v golangci-lint >/dev/null 2>&1 || { \
+		echo "golangci-lint not found. Run 'make dev-setup' or see"; \
+		echo "https://golangci-lint.run/welcome/install/"; \
+		exit 1; }
 	@golangci-lint run ./...
 
 fmt: ## Format code
 	@echo "Formatting code..."
 	@gofmt -w $(GO_FILES)
-	@goimports -w $(GO_FILES)
+	@# goimports is optional: it is part of dev-setup, but a missing optional
+	@# tool should not fail the whole check pipeline. gofmt above is the part
+	@# CI actually enforces.
+	@command -v goimports >/dev/null 2>&1 && goimports -w $(GO_FILES) || \
+		echo "  (goimports not installed; skipping — run 'make dev-setup')"
 
 vet: ## Run go vet
 	@go vet ./...
@@ -100,7 +108,7 @@ tidy: ## Tidy go modules
 vendor: ## Vendor dependencies
 	@go mod vendor
 
-check: fmt vet staticcheck test ## Run all checks
+check: fmt vet lint test ## Run all checks (mirrors CI)
 
 ci: check ## CI pipeline
 
@@ -110,7 +118,8 @@ release: ## Create release (tags current commit)
 
 # Development helpers
 dev-setup: ## Setup development environment
-	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@# Pinned to the version CI uses; see GOLANGCI_LINT_VERSION in ci.yml.
+	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
 	@go install golang.org/x/tools/cmd/goimports@latest
 	@go install honnef.co/go/tools/cmd/staticcheck@latest
 	@go install github.com/golang/mock/mockgen@latest
