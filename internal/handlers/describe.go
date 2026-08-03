@@ -20,7 +20,12 @@ func NewDescribeHandler(b types.BotInterface) *DescribeHandler {
 	return &DescribeHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *DescribeHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
+func (h *DescribeHandler) Handle(
+	ctx context.Context,
+	msg *tg.Message,
+	args []string,
+	session *types.UserSession,
+) error {
 	if len(args) < 2 {
 		h.sendResponse(msg.Chat.ID, "Usage: /describe <resource> <name> [-n namespace]")
 		return nil
@@ -55,7 +60,7 @@ func (h *DescribeHandler) Handle(ctx context.Context, msg *tg.Message, args []st
 	}
 
 	// Use wide format for describe
-	h.sendSingleResource(msg.Chat.ID, resource, "wide")
+	h.sendSingleResource(msg.Chat.ID, resource, formatWide)
 	return nil
 }
 
@@ -67,6 +72,6 @@ func (h *DescribeHandler) sendSingleResource(chatID int64, resource *k8s.Resourc
 	// Describe output is long, so the rich rendering puts labels, annotations
 	// and raw details behind collapsible sections.
 	h.bot.SendRich(chatID,
-		formatters.RichResource(resource, format == "wide"),
+		formatters.RichResource(resource, format == formatWide),
 		formatters.FormatResource(resource, format))
 }

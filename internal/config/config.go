@@ -4,12 +4,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
+
+// appName is the binary name, and doubles as the config file base name
+// (telectl.yaml) and the /etc subdirectory searched for it.
+const appName = "telectl"
+
+// envPrefix namespaces config overrides: bot.rate_limit is TELECTL_BOT_RATE_LIMIT.
+// Credentials keep their conventional unprefixed names (TELEGRAM_BOT_TOKEN,
+// KUBECONFIG), bound explicitly below.
+const envPrefix = "TELECTL"
 
 type Config struct {
 	Telegram   TelegramConfig   `mapstructure:"telegram"`
@@ -71,25 +81,25 @@ func InitConfig(configFile string) error {
 	if configFile != "" {
 		viper.SetConfigFile(configFile)
 	} else {
-		viper.SetConfigName("k8s-telegram-bot")
+		viper.SetConfigName(appName)
 		viper.SetConfigType("yaml")
 		home, err := os.UserHomeDir()
 		if err == nil {
 			// NB: deliberately do NOT add "." (cwd) as a search path.
-			// A binary named k8s-telegram-bot built into the repo root
-			// (via 'make build') collides with the config name and viper
-			// tries to parse the executable as YAML, producing
+			// A binary named telectl built into the repo root (via
+			// 'make build') collides with the config name and viper tries
+			// to parse the executable as YAML, producing
 			// "yaml: control characters are not allowed".
-			viper.AddConfigPath(filepath.Join(home, ".config", "k8s-telegram-bot"))
+			viper.AddConfigPath(filepath.Join(home, ".config", appName))
 			viper.AddConfigPath(filepath.Join(home, ".config"))
-			viper.AddConfigPath("/etc/k8s-telegram-bot")
+			viper.AddConfigPath("/etc/" + appName)
 		}
 	}
 
 	// Step 2: Prevent AddConfigPath(home) from ever finding ~/.kube/config.
 	// Even though AddConfigPath is scoped above, defensively clear any
 	// stale search paths if InitConfig is called more than once.
-	viper.SetEnvPrefix("K8SBOT")
+	viper.SetEnvPrefix(envPrefix)
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
@@ -153,7 +163,7 @@ func InitConfig(configFile string) error {
 				if fi, statErr := os.Stat(usedFile); statErr == nil && fi.Size() > 0 {
 					// Refuse a file with no recognized config extension —
 					// this catches the case where the compiled binary
-					// (k8s-telegram-bot, no extension) is found as config.
+					// (telectl, no extension) is found as config.
 					ext := strings.ToLower(filepath.Ext(usedFile))
 					validExts := map[string]bool{
 						".yaml": true, ".yml": true, ".json": true,
@@ -162,11 +172,11 @@ func InitConfig(configFile string) error {
 						".hcl": true, ".tfvars": true, ".dotenv": true,
 					}
 					if ext == "" || !validExts[ext] {
-						return fmt.Errorf("refusing to use %q as bot config: not a recognized config file (ext=%q). Pass --config /path/to/k8s-telegram-bot.yaml explicitly", usedFile, ext)
+						return fmt.Errorf("refusing to use %q as bot config: not a recognized config file (ext=%q). Pass --config /path/to/telectl.yaml explicitly", usedFile, ext)
 					}
 					raw, readErr := os.ReadFile(usedFile)
 					if readErr == nil && (strings.Contains(string(raw), "apiVersion: v1") || strings.Contains(string(raw), "certificate-authority-data")) && !strings.Contains(string(raw), "telegram") {
-						return fmt.Errorf("refusing to use %q as bot config: it looks like a kubeconfig file. Pass --config /path/to/k8s-telegram-bot.yaml explicitly", usedFile)
+						return fmt.Errorf("refusing to use %q as bot config: it looks like a kubeconfig file. Pass --config /path/to/telectl.yaml explicitly", usedFile)
 					}
 				}
 			}
@@ -232,24 +242,44 @@ func Get() *Config {
 	return cfg
 }
 
+// PrintConfig writes the effective configuration to stdout.
+//
+// It prints viper's merged view rather than reflecting over the Config struct,
+// because that is the value actually in effect for each key — including
+// anything supplied by environment variables or flag overrides. The bot token
+// is redacted: this output is routinely pasted into issue reports.
 func PrintConfig() error {
-	c, err := Load()
-	if err != nil {
+	// Load populates viper as a side effect; the returned struct is not needed
+	// because the merged key/value view below is strictly more complete.
+	if _, err := Load(); err != nil {
 		return err
 	}
 
 	fmt.Println("Current Configuration:")
 	fmt.Println("=====================")
-	printConfig("", c)
+	keys := viper.AllKeys()
+	sort.Strings(keys)
+	for _, key := range keys {
+		value := viper.Get(key)
+		if key == "telegram.bot_token" {
+			value = redact(viper.GetString(key))
+		}
+		fmt.Printf("%s: %v\n", key, value)
+	}
 	return nil
 }
 
-func printConfig(prefix string, v interface{}) {
-	// This would need reflection to print all fields nicely
-	// For now, just print the viper settings
-	for _, key := range viper.AllKeys() {
-		fmt.Printf("%s%s: %v\n", prefix, key, viper.Get(key))
+// redact keeps a short prefix so an operator can tell which token is loaded
+// without the output disclosing it.
+func redact(s string) string {
+	if s == "" {
+		return "(not set)"
 	}
+	const keep = 4
+	if len(s) <= keep {
+		return "****"
+	}
+	return s[:keep] + "****"
 }
 
 func CreateDefaultConfig(path string) error {

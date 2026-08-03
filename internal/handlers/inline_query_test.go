@@ -11,17 +11,30 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// MockK8sClient is a mock for the k8s client
+// MockK8sClient is a mock for the k8s client.
 type MockK8sClient struct {
 	mock.Mock
 }
 
-func (m *MockK8sClient) ListResources(ctx context.Context, gvr schema.GroupVersionResource, namespace, labelSelector, fieldSelector string) ([]k8s.ResourceInfo, error) {
+func (m *MockK8sClient) ListResources(
+	ctx context.Context,
+	gvr schema.GroupVersionResource,
+	namespace,
+	labelSelector,
+	fieldSelector string) ([]k8s.ResourceInfo,
+	error,
+) {
 	args := m.Called(ctx, gvr, namespace, labelSelector, fieldSelector)
 	return args.Get(0).([]k8s.ResourceInfo), args.Error(1)
 }
 
-func (m *MockK8sClient) GetResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string) (*k8s.ResourceInfo, error) {
+func (m *MockK8sClient) GetResource(
+	ctx context.Context,
+	gvr schema.GroupVersionResource,
+	namespace,
+	name string) (*k8s.ResourceInfo,
+	error,
+) {
 	args := m.Called(ctx, gvr, namespace, name)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)

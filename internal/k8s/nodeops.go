@@ -182,7 +182,7 @@ func NodeConditionSummary(r *ResourceInfo) string {
 	if !ok {
 		return ""
 	}
-	var parts []string
+	parts := make([]string, 0, len(conds))
 	for _, c := range conds {
 		cm, ok := c.(map[string]interface{})
 		if !ok {

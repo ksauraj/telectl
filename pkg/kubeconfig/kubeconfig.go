@@ -10,7 +10,7 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
-// ContextInfo represents a kubeconfig context with full details
+// ContextInfo represents a kubeconfig context with full details.
 type ContextInfo struct {
 	Name          string    `json:"name" yaml:"name"`
 	Cluster       string    `json:"cluster" yaml:"cluster"`
@@ -21,7 +21,7 @@ type ContextInfo struct {
 	AuthInfo      *AuthInfo `json:"auth_info,omitempty" yaml:"auth_info,omitempty"`
 }
 
-// AuthInfo represents authentication information for a user
+// AuthInfo represents authentication information for a user.
 type AuthInfo struct {
 	Name           string   `json:"name,omitempty" yaml:"name,omitempty"`
 	Username       string   `json:"username,omitempty" yaml:"username,omitempty"`
@@ -36,7 +36,7 @@ type AuthInfo struct {
 	ExecEnv        []string `json:"exec_env,omitempty" yaml:"exec_env,omitempty"`
 }
 
-// ClusterInfo represents cluster information
+// ClusterInfo represents cluster information.
 type ClusterInfo struct {
 	Name                     string `json:"name" yaml:"name"`
 	Server                   string `json:"server" yaml:"server"`
@@ -45,7 +45,7 @@ type ClusterInfo struct {
 	InsecureSkipTLSVerify    bool   `json:"insecure_skip_tls_verify" yaml:"insecure_skip_tls_verify"`
 }
 
-// KubeConfig represents the full parsed kubeconfig
+// KubeConfig represents the full parsed kubeconfig.
 type KubeConfig struct {
 	Contexts       []ContextInfo        `json:"contexts" yaml:"contexts"`
 	Clusters       []ClusterInfo        `json:"clusters" yaml:"clusters"`
@@ -55,7 +55,7 @@ type KubeConfig struct {
 	Raw            *clientcmdapi.Config `json:"-" yaml:"-"`
 }
 
-// ParseKubeconfig parses a kubeconfig file and returns structured data
+// ParseKubeconfig parses a kubeconfig file and returns structured data.
 func ParseKubeconfig(configPath string) (*KubeConfig, error) {
 	if configPath == "" {
 		configPath = os.Getenv("KUBECONFIG")
@@ -157,7 +157,7 @@ func ParseKubeconfig(configPath string) (*KubeConfig, error) {
 	return kubeConfig, nil
 }
 
-// GetCurrentContext returns the current context
+// GetCurrentContext returns the current context.
 func (kc *KubeConfig) GetCurrentContext() *ContextInfo {
 	for i := range kc.Contexts {
 		if kc.Contexts[i].Current {
@@ -167,7 +167,7 @@ func (kc *KubeConfig) GetCurrentContext() *ContextInfo {
 	return nil
 }
 
-// GetContextByName returns a context by name
+// GetContextByName returns a context by name.
 func (kc *KubeConfig) GetContextByName(name string) *ContextInfo {
 	for i := range kc.Contexts {
 		if kc.Contexts[i].Name == name {
@@ -177,7 +177,7 @@ func (kc *KubeConfig) GetContextByName(name string) *ContextInfo {
 	return nil
 }
 
-// SwitchContext switches the current context in the kubeconfig file
+// SwitchContext switches the current context in the kubeconfig file.
 func (kc *KubeConfig) SwitchContext(contextName string) error {
 	ctx := kc.GetContextByName(contextName)
 	if ctx == nil {
@@ -195,7 +195,7 @@ func (kc *KubeConfig) SwitchContext(contextName string) error {
 	return kc.Save()
 }
 
-// AddContext adds a new context to the kubeconfig
+// AddContext adds a new context to the kubeconfig.
 func (kc *KubeConfig) AddContext(name, cluster, user, namespace string) error {
 	if kc.GetContextByName(name) != nil {
 		return fmt.Errorf("context already exists: %s", name)
@@ -244,7 +244,7 @@ func (kc *KubeConfig) AddContext(name, cluster, user, namespace string) error {
 	return kc.Save()
 }
 
-// DeleteContext deletes a context from the kubeconfig
+// DeleteContext deletes a context from the kubeconfig.
 func (kc *KubeConfig) DeleteContext(name string) error {
 	ctx := kc.GetContextByName(name)
 	if ctx == nil {
@@ -303,7 +303,7 @@ func (kc *KubeConfig) Save() error {
 	return nil
 }
 
-// Validate validates the kubeconfig structure
+// Validate validates the kubeconfig structure.
 func (kc *KubeConfig) Validate() error {
 	if len(kc.Contexts) == 0 {
 		return fmt.Errorf("no contexts found in kubeconfig")
@@ -321,7 +321,7 @@ func (kc *KubeConfig) Validate() error {
 	return nil
 }
 
-// GetContextForCluster returns all contexts for a given cluster
+// GetContextForCluster returns all contexts for a given cluster.
 func (kc *KubeConfig) GetContextsForCluster(clusterName string) []ContextInfo {
 	var result []ContextInfo
 	for _, ctx := range kc.Contexts {
@@ -332,7 +332,7 @@ func (kc *KubeConfig) GetContextsForCluster(clusterName string) []ContextInfo {
 	return result
 }
 
-// GetContextsForUser returns all contexts for a given user
+// GetContextsForUser returns all contexts for a given user.
 func (kc *KubeConfig) GetContextsForUser(userName string) []ContextInfo {
 	var result []ContextInfo
 	for _, ctx := range kc.Contexts {
@@ -359,7 +359,7 @@ func execEnvToStrings(env []clientcmdapi.ExecEnvVar) []string {
 	return result
 }
 
-// ToYAML returns the kubeconfig as YAML string
+// ToYAML returns the kubeconfig as YAML string.
 func (kc *KubeConfig) ToYAML() (string, error) {
 	data, err := yaml.Marshal(kc)
 	if err != nil {

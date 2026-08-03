@@ -22,7 +22,12 @@ func NewContextsHandler(b types.BotInterface) *ContextsHandler {
 	return &ContextsHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *ContextsHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
+func (h *ContextsHandler) Handle(
+	ctx context.Context,
+	msg *tg.Message,
+	args []string,
+	session *types.UserSession,
+) error {
 	client := h.getK8sClient()
 	kubeconfig := client.GetKubeconfig()
 
@@ -59,7 +64,12 @@ func NewUseContextHandler(b types.BotInterface) *UseContextHandler {
 	return &UseContextHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *UseContextHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
+func (h *UseContextHandler) Handle(
+	ctx context.Context,
+	msg *tg.Message,
+	args []string,
+	session *types.UserSession,
+) error {
 	if len(args) == 0 {
 		h.sendResponse(msg.Chat.ID, "Usage: /use-context <context-name>")
 		return nil
@@ -152,7 +162,12 @@ func NewPortForwardHandler(b types.BotInterface) *PortForwardHandler {
 	return &PortForwardHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *PortForwardHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
+func (h *PortForwardHandler) Handle(
+	ctx context.Context,
+	msg *tg.Message,
+	args []string,
+	session *types.UserSession,
+) error {
 	if len(args) < 2 {
 		h.sendResponse(msg.Chat.ID, "Usage: /portforward <pod> <local:remote> [-n namespace]")
 		return nil

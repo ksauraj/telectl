@@ -38,7 +38,7 @@ func RichResourceList(resources []k8s.ResourceInfo, wide bool) string {
 
 	rows := make([][]string, 0, len(resources))
 	for i := range resources {
-		rows = append(rows, rowForKind(cols, &resources[i], kind))
+		rows = append(rows, rowForKind(cols, &resources[i]))
 	}
 
 	d.Heading(3, fmt.Sprintf("%s — %d item(s)", pluralKind(kind, len(resources)), len(resources)))

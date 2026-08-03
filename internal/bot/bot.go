@@ -23,6 +23,20 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
+// Command names, shared by the handler registry, the callback dispatcher and
+// the reply-keyboard matcher. All three must agree: a command registered under
+// one spelling and dispatched under another is a button that does nothing.
+const (
+	cmdHelp = "help"
+	cmdLogs = "logs"
+)
+
+// Callback verbs that appear in more than one dispatch switch.
+const (
+	verbHome = "home"
+	verbPage = "page"
+)
+
 type Bot struct {
 	tgBot        *tg.RealBot
 	libBot       *bottg.Bot
@@ -87,11 +101,11 @@ func New(cfg *config.Config, logger *zap.Logger) (*Bot, error) {
 
 func (b *Bot) registerHandlers() {
 	b.handlers["start"] = handlers.NewStartHandler(b)
-	b.handlers["help"] = handlers.NewHelpHandler(b)
+	b.handlers[cmdHelp] = handlers.NewHelpHandler(b)
 	b.handlers["version"] = handlers.NewVersionHandler(b)
 	b.handlers["get"] = handlers.NewGetHandler(b)
 	b.handlers["describe"] = handlers.NewDescribeHandler(b)
-	b.handlers["logs"] = handlers.NewLogsHandler(b)
+	b.handlers[cmdLogs] = handlers.NewLogsHandler(b)
 	b.handlers["exec"] = handlers.NewExecHandler(b)
 	b.handlers["portforward"] = handlers.NewPortForwardHandler(b)
 	b.handlers["contexts"] = handlers.NewContextsHandler(b)
@@ -200,12 +214,13 @@ func (b *Bot) handleMessage(ctx context.Context, bot *bottg.Bot, update *botmode
 		}
 	}
 
-	if strings.HasPrefix(msg.Text, "/") {
+	switch {
+	case strings.HasPrefix(msg.Text, "/"):
 		b.logger.Debug("Processing command", zap.String("command", msg.Text))
 		b.handleCommand(ctx, msg, session)
-	} else if session.IsInExecMode() {
+	case session.IsInExecMode():
 		b.handleExecInput(ctx, msg, session)
-	} else {
+	default:
 		b.ShowMainMenu(ctx, chatID, session)
 	}
 }
@@ -228,7 +243,7 @@ func (b *Bot) handleInlineQuery(ctx context.Context, iq *botmodels.InlineQuery) 
 		From:     &tg.User{ID: iq.From.ID, FirstName: iq.From.FirstName, Username: iq.From.Username},
 		Query:    iq.Query,
 		Offset:   iq.Offset,
-		ChatType: string(iq.ChatType),
+		ChatType: iq.ChatType,
 	}
 	if err := handler.HandleInlineQuery(ctx, tgIQ); err != nil {
 		b.logger.Error("Inline query failed",
@@ -264,8 +279,12 @@ func (b *Bot) handleCommand(ctx context.Context, msg *botmodels.Message, session
 		Chat:   &tg.Chat{ID: msg.Chat.ID, Type: string(msg.Chat.Type), Title: msg.Chat.Title},
 	}, args, session); err != nil {
 		b.logger.Error("Command failed", zap.String("cmd", cmd), zap.Error(err))
-		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("❌ Error: %s", err.Error()), "HTML", nil); err != nil {
-			b.logger.Error("Failed to send command error", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
+		// Distinct name: shadowing err here would make the message below report
+		// the send failure instead of the command failure it is describing.
+		if _, sendErr := b.tgBot.SendText(ctx, msg.Chat.ID,
+			fmt.Sprintf("❌ Error: %s", err.Error()), "HTML", nil); sendErr != nil {
+			b.logger.Error("Failed to send command error",
+				zap.Error(sendErr), zap.Int64("chat_id", msg.Chat.ID))
 		}
 	}
 }
@@ -322,7 +341,13 @@ func (b *Bot) handleCallbackQuery(ctx context.Context, bot *bottg.Bot, update *b
 // dispatchCallback routes a parsed inline-button action. Menu actions reuse the
 // same command handlers as typed commands so behaviour cannot drift between the
 // two entry points.
-func (b *Bot) dispatchCallback(ctx context.Context, chatID int64, messageID int, action *menus.CallbackAction, session *types.UserSession) {
+func (b *Bot) dispatchCallback(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	action *menus.CallbackAction,
+	session *types.UserSession,
+) {
 	switch action.Type {
 	case "noop":
 		return
@@ -330,15 +355,15 @@ func (b *Bot) dispatchCallback(ctx context.Context, chatID int64, messageID int,
 	case "main":
 		b.editToMainMenu(ctx, chatID, messageID, session)
 
-	case "help":
-		b.runCommand(ctx, "help", nil, chatID, session)
+	case cmdHelp:
+		b.runCommand(ctx, cmdHelp, nil, chatID, session)
 
 	case "resource":
 		b.dispatchResourceCallback(ctx, chatID, messageID, action, session)
 
 	case "monitor":
 		switch action.Action {
-		case "home":
+		case verbHome:
 			kb := b.menuBuilder.GetMonitorInlineKeyboard()
 			b.editView(ctx, chatID, messageID, "📊 <b>Monitoring</b>\n\nPick a view.", &kb)
 		case "top":
@@ -355,7 +380,7 @@ func (b *Bot) dispatchCallback(ctx context.Context, chatID int64, messageID int,
 
 	case "ops":
 		switch action.Action {
-		case "home":
+		case verbHome:
 			kb := b.menuBuilder.GetOperationsInlineKeyboard()
 			b.editView(ctx, chatID, messageID, "🔧 <b>Operations</b>\n\nPick an operation.", &kb)
 		case "restart":
@@ -439,7 +464,13 @@ func (b *Bot) editToMainMenu(ctx context.Context, chatID int64, messageID int, s
 }
 
 // dispatchResourceCallback handles the "menu:resource:*" family.
-func (b *Bot) dispatchResourceCallback(ctx context.Context, chatID int64, messageID int, action *menus.CallbackAction, session *types.UserSession) {
+func (b *Bot) dispatchResourceCallback(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	action *menus.CallbackAction,
+	session *types.UserSession,
+) {
 	switch action.Action {
 	case "types":
 		session.SetMenuState(&types.MenuState{CurrentView: "resource_types"})
@@ -454,7 +485,7 @@ func (b *Bot) dispatchResourceCallback(ctx context.Context, chatID int64, messag
 		// Full describe output is one tap away behind the Describe button.
 		b.showResourceDetail(ctx, chatID, messageID, action.ResourceType, action.Namespace, action.Name, session)
 
-	case "refresh", "list", "page", "filter":
+	case "refresh", "list", verbPage, "filter":
 		// The resource-type buttons emit "menu:resource:<type>", which the
 		// parser reports as Action=<type> with no ResourceType. Fall back to
 		// the action verb so "menu:resource:pods" still lists pods.
@@ -475,7 +506,14 @@ func (b *Bot) dispatchResourceCallback(ctx context.Context, chatID int64, messag
 }
 
 // listResources renders a resource list into the current menu message.
-func (b *Bot) listResources(ctx context.Context, chatID int64, messageID int, resourceType string, action *menus.CallbackAction, session *types.UserSession) {
+func (b *Bot) listResources(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	resourceType string,
+	action *menus.CallbackAction,
+	session *types.UserSession,
+) {
 	gvr, known := types.ResourceMap[resourceType]
 	if !known {
 		b.SendMessage(chatID, fmt.Sprintf("❌ Unknown resource type: %s", formatters.EscapeHTML(resourceType)))
@@ -549,7 +587,14 @@ func (b *Bot) listResources(ctx context.Context, chatID int64, messageID int, re
 
 // editRichView edits a menu message to rich content, falling back to a plain
 // HTML edit if the server rejects the rich message.
-func (b *Bot) editRichView(ctx context.Context, chatID int64, messageID int, markdown, fallback string, kb *tg.InlineKeyboardMarkup) {
+func (b *Bot) editRichView(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	markdown,
+	fallback string,
+	kb *tg.InlineKeyboardMarkup,
+) {
 	if _, err := b.tgBot.EditRich(ctx, chatID, messageID, markdown, kb); err != nil {
 		if strings.Contains(err.Error(), "message is not modified") {
 			b.logger.Debug("Rich menu edit was a no-op", zap.Int64("chat_id", chatID))
@@ -563,11 +608,17 @@ func (b *Bot) editRichView(ctx context.Context, chatID int64, messageID int, mar
 
 // dispatchNamespaceCallback handles the "menu:ns:*" family — the namespace
 // switcher that lets users browse resources outside the default namespace.
-func (b *Bot) dispatchNamespaceCallback(ctx context.Context, chatID int64, messageID int, action *menus.CallbackAction, session *types.UserSession) {
+func (b *Bot) dispatchNamespaceCallback(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	action *menus.CallbackAction,
+	session *types.UserSession,
+) {
 	switch action.Action {
-	case "pick", "page":
+	case "pick", verbPage:
 		page := 0
-		if action.Action == "page" {
+		if action.Action == verbPage {
 			if p, err := strconv.Atoi(action.Name); err == nil && p >= 0 {
 				page = p
 			}
@@ -649,9 +700,15 @@ func nsDisplay(ns string) string {
 }
 
 // dispatchSettingsCallback handles the "menu:settings:*" family.
-func (b *Bot) dispatchSettingsCallback(ctx context.Context, chatID int64, messageID int, action *menus.CallbackAction, session *types.UserSession) {
+func (b *Bot) dispatchSettingsCallback(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	action *menus.CallbackAction,
+	session *types.UserSession,
+) {
 	switch action.Action {
-	case "home":
+	case verbHome:
 		kb := b.menuBuilder.GetSettingsInlineKeyboard()
 		text := fmt.Sprintf("⚙️ <b>Settings</b>\n\n<b>Context:</b> %s\n<b>Namespace:</b> %s",
 			formatters.EscapeHTML(b.currentContextName(session)),
@@ -667,7 +724,13 @@ func (b *Bot) dispatchSettingsCallback(ctx context.Context, chatID int64, messag
 }
 
 // dispatchResourceAction handles the "menu:action:*" family (per-resource verbs).
-func (b *Bot) dispatchResourceAction(ctx context.Context, chatID int64, messageID int, action *menus.CallbackAction, session *types.UserSession) {
+func (b *Bot) dispatchResourceAction(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	action *menus.CallbackAction,
+	session *types.UserSession,
+) {
 	// The detail pane's verbs are handled here; anything unrecognised falls
 	// through to the legacy verbs below.
 	if b.dispatchDetailAction(ctx, chatID, messageID, action, session) {
@@ -682,12 +745,12 @@ func (b *Bot) dispatchResourceAction(ctx context.Context, chatID int64, messageI
 	}
 
 	switch action.Action {
-	case "logs":
+	case cmdLogs:
 		// Pod log buttons built before the detail pane carried no type field.
 		if action.Name == "" {
 			return
 		}
-		b.runCommand(ctx, "logs", append([]string{action.Name}, nsArgs()...), chatID, session)
+		b.runCommand(ctx, cmdLogs, append([]string{action.Name}, nsArgs()...), chatID, session)
 
 	case "delete":
 		if action.ResourceType == "" || action.Name == "" {
@@ -722,7 +785,13 @@ func (b *Bot) dispatchResourceAction(ctx context.Context, chatID int64, messageI
 }
 
 // confirmDelete performs a delete that the user explicitly confirmed.
-func (b *Bot) confirmDelete(ctx context.Context, chatID int64, messageID int, action *menus.CallbackAction, session *types.UserSession) {
+func (b *Bot) confirmDelete(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	action *menus.CallbackAction,
+	session *types.UserSession,
+) {
 	gvr, known := types.ResourceMap[action.ResourceType]
 	if !known {
 		b.SendMessage(chatID, fmt.Sprintf("❌ Unknown resource type: %s", formatters.EscapeHTML(action.ResourceType)))
@@ -748,7 +817,7 @@ func (b *Bot) handleReplyKeyboard(ctx context.Context, msg *botmodels.Message, s
 	case "📦 Resources", "resources":
 		b.ShowResourceTypes(ctx, msg.Chat.ID, session)
 		return true
-	case "📋 Logs", "logs":
+	case "📋 Logs", cmdLogs:
 		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID, "Usage: /logs <pod> [-c container] [-n namespace] [-f] [--tail N]", "HTML", nil); err != nil {
 			b.logger.Error("Failed to send logs usage", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
 		}
@@ -764,8 +833,8 @@ func (b *Bot) handleReplyKeyboard(ctx context.Context, msg *botmodels.Message, s
 	case "🔌 Port Forward", "port forward", "portforward":
 		b.SendMessage(msg.Chat.ID, "🔌 Usage: <code>/portforward &lt;pod&gt; &lt;local:remote&gt; [-n namespace]</code>")
 		return true
-	case "❓ Help", "help":
-		b.runCommand(ctx, "help", nil, msg.Chat.ID, session)
+	case "❓ Help", cmdHelp:
+		b.runCommand(ctx, cmdHelp, nil, msg.Chat.ID, session)
 		return true
 	case "📊 Monitor", "monitor":
 		b.ShowMonitor(ctx, msg.Chat.ID, session)
@@ -877,21 +946,12 @@ func (b *Bot) getOrCreateSession(userID int64) *types.UserSession {
 	return val.(*types.UserSession)
 }
 
-func (b *Bot) getGVR(resourceType string) *schema.GroupVersionResource {
-	if gvr, ok := types.ResourceMap[resourceType]; ok {
-		v := gvr.GVR()
-		return &v
-	}
-	return nil
-}
-
-func (b *Bot) listResourcesForMenu(ctx context.Context, resourceType, namespace string) ([]types.MenuState, error) {
-	_ = ctx
-	_ = namespace
-	return nil, nil
-}
-
-func (b *Bot) deleteResourceForMenu(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string) error {
+func (b *Bot) deleteResourceForMenu(
+	ctx context.Context,
+	gvr schema.GroupVersionResource,
+	namespace,
+	name string,
+) error {
 	return b.k8sClient.DeleteResource(ctx, gvr, namespace, name, &metav1.DeleteOptions{})
 }
 

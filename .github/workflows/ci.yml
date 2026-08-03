@@ -9,7 +9,7 @@ on:
 
 env:
   GO_VERSION: '1.23'
-  BINARY_NAME: k8s-telegram-bot
+  BINARY_NAME: telectl
 
 jobs:
   tidy:
@@ -125,7 +125,7 @@ jobs:
         run: |
           CGO_ENABLED=0 go build \
             -ldflags="-w -s -X main.version=${{ github.ref_name }} -X main.commit=${{ github.sha }} -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o ${{ env.BINARY_NAME }} ./cmd/k8sbot
+            -o ${{ env.BINARY_NAME }} ./cmd/telectl
 
       - name: Upload binary
         uses: actions/upload-artifact@v4

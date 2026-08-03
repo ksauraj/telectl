@@ -1,9 +1,9 @@
 #!/bin/bash
-# k8s-telegram-bot Development Setup Script
+# telectl Development Setup Script
 
 set -euo pipefail
 
-echo "🔧 Setting up k8s-telegram-bot development environment..."
+echo "🔧 Setting up telectl development environment..."
 
 # Check Go version
 GO_VERSION=$(go version | awk '{print $3}' | sed 's/go//')
@@ -71,6 +71,6 @@ echo "  make check        - Run all checks (fmt, vet, staticcheck, test)"
 echo "  make run-dev      - Run in development mode (requires TELEGRAM_BOT_TOKEN)"
 echo ""
 echo "📝 Don't forget to:"
-echo "  1. Copy config.yaml.example to ~/.config/k8s-telegram-bot.yaml"
+echo "  1. Copy config.yaml.example to ~/.config/telectl.yaml"
 echo "  2. Add your TELEGRAM_BOT_TOKEN"
 echo "  3. Configure ALLOWED_USER_IDS for security"

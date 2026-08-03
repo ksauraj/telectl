@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-// BotInterface defines the interface that handlers need from the bot
+// BotInterface defines the interface that handlers need from the bot.
 type BotInterface interface {
 	SendMessage(chatID int64, text string)
 	SendLongMessage(chatID int64, text string)
@@ -40,7 +40,7 @@ type BotInterface interface {
 	ShowSettings(ctx context.Context, chatID int64, session *UserSession)
 }
 
-// CommandHandler interface
+// CommandHandler interface.
 type CommandHandler interface {
 	Handle(ctx context.Context, msg *tg.Message, args []string, session *UserSession) error
 }

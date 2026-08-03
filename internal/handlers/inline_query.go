@@ -227,7 +227,7 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 }
 
 func (h *InlineQueryHandler) showInlineHelp(inlineQuery *tg.InlineQuery) error {
-	help := `📦 *k8s-telegram-bot Inline Query Help*
+	help := `📦 *telectl Inline Query Help*
 
 *Usage:* @bot <resource> [name] [flags]
 
@@ -261,7 +261,11 @@ func (h *InlineQueryHandler) showInlineHelp(inlineQuery *tg.InlineQuery) error {
 	})
 }
 
-func (h *InlineQueryHandler) answerInlineQuery(ctx context.Context, inlineQueryID string, results []tg.InlineQueryResultArticle) error {
+func (h *InlineQueryHandler) answerInlineQuery(
+	ctx context.Context,
+	inlineQueryID string,
+	results []tg.InlineQueryResultArticle,
+) error {
 	modelResults := make([]botmodels.InlineQueryResult, len(results))
 	for i, r := range results {
 		var imc botmodels.InputMessageContent

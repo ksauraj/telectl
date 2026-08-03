@@ -23,12 +23,29 @@ import (
 // available yet" default. They are wired to the same k8s client the typed
 // commands use, so there is one implementation per operation.
 
+// Canonical plural resource names this file switches on. These are the values
+// menus.CanonicalResource produces, so they must match the keys in
+// types.ResourceMap exactly.
+const (
+	kindPods        = "pods"
+	kindDeployments = "deployments"
+	kindReplicaSets = "replicasets"
+)
+
 // showResourceDetail renders the detail pane for a single resource: a summary
 // header plus the action keyboard for its kind.
 //
 // This replaces the old behaviour where tapping a resource ran Describe
 // directly, which dumped the whole object and offered no way to act on it.
-func (b *Bot) showResourceDetail(ctx context.Context, chatID int64, messageID int, resourceType, namespace, name string, session *types.UserSession) {
+func (b *Bot) showResourceDetail(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	resourceType,
+	namespace,
+	name string,
+	session *types.UserSession,
+) {
 	kind := menus.CanonicalResource(resourceType)
 	gvr, known := types.ResourceMap[kind]
 	if !known {
@@ -66,7 +83,13 @@ func (b *Bot) showResourceDetail(ctx context.Context, chatID int64, messageID in
 // dispatchDetailAction handles the verbs reachable from a detail pane. It
 // returns false for actions it does not own, so the caller can fall through to
 // the older handlers.
-func (b *Bot) dispatchDetailAction(ctx context.Context, chatID int64, messageID int, action *menus.CallbackAction, session *types.UserSession) bool {
+func (b *Bot) dispatchDetailAction(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	action *menus.CallbackAction,
+	session *types.UserSession,
+) bool {
 	kind := menus.CanonicalResource(action.ResourceType)
 	ns := action.Namespace
 	name := action.Name
@@ -88,7 +111,7 @@ func (b *Bot) dispatchDetailAction(ctx context.Context, chatID int64, messageID 
 		b.showLabels(ctx, chatID, kind, ns, name)
 
 	case "events":
-		b.showObjectEvents(ctx, chatID, kind, ns, name)
+		b.showObjectEvents(ctx, chatID, ns, name)
 
 	case "selector":
 		b.showSelector(ctx, chatID, kind, ns, name)
@@ -103,7 +126,7 @@ func (b *Bot) dispatchDetailAction(ctx context.Context, chatID int64, messageID 
 		b.showNodePods(ctx, chatID, messageID, name, session)
 
 	case "top":
-		b.showNodeTop(ctx, chatID, name, session)
+		b.showNodeTop(ctx, chatID, name)
 
 	case "history":
 		b.showRolloutHistory(ctx, chatID, ns, name)
@@ -135,7 +158,7 @@ func (b *Bot) dispatchDetailAction(ctx context.Context, chatID int64, messageID 
 	case "logsopts":
 		b.showLogOptions(ctx, chatID, messageID, ns, name)
 
-	case "logs":
+	case cmdLogs:
 		// Per-container and tail-size buttons: Container is the container name,
 		// Extra the optional line count. Routed here rather than to the legacy
 		// path so the container selection is not silently dropped.
@@ -198,8 +221,9 @@ func labelsFallback(r *k8s.ResourceInfo) string {
 	if r == nil || len(r.Labels) == 0 {
 		return "no labels"
 	}
-	var parts []string
-	for _, k := range formatters.SortedKeys(r.Labels) {
+	keys := formatters.SortedKeys(r.Labels)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
 		parts = append(parts, k+"="+r.Labels[k])
 	}
 	return strings.Join(parts, ", ")
@@ -208,7 +232,7 @@ func labelsFallback(r *k8s.ResourceInfo) string {
 // showObjectEvents lists events whose involvedObject is this resource. The
 // field selector is applied server-side so a busy namespace does not have to be
 // pulled down in full.
-func (b *Bot) showObjectEvents(ctx context.Context, chatID int64, kind, ns, name string) {
+func (b *Bot) showObjectEvents(ctx context.Context, chatID int64, ns, name string) {
 	selector := "involvedObject.name=" + name
 	events, err := b.k8sClient.GetEvents(ctx, ns, selector)
 	if err != nil {
@@ -266,7 +290,15 @@ func (b *Bot) showEndpoints(ctx context.Context, chatID int64, ns, name string) 
 
 // showWorkloadPods lists the pods a deployment/replicaset owns, as a browsable
 // pod list so each result is still tappable.
-func (b *Bot) showWorkloadPods(ctx context.Context, chatID int64, messageID int, kind, ns, name string, session *types.UserSession) {
+func (b *Bot) showWorkloadPods(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	kind,
+	ns,
+	name string,
+	session *types.UserSession,
+) {
 	pods, selector, err := b.k8sClient.ListPodsForWorkload(ctx, kind, ns, name)
 	if err != nil {
 		b.reportError(chatID, "list pods for "+kind, err)
@@ -290,7 +322,16 @@ func (b *Bot) showNodePods(ctx context.Context, chatID int64, messageID int, nod
 
 // showPodResults renders an ad-hoc pod list with the standard list keyboard, so
 // results from a workload or node drill-down behave like any other pod list.
-func (b *Bot) showPodResults(ctx context.Context, chatID int64, messageID int, pods []k8s.ResourceInfo, ns, heading, note string, session *types.UserSession) {
+func (b *Bot) showPodResults(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	pods []k8s.ResourceInfo,
+	ns,
+	heading,
+	note string,
+	session *types.UserSession,
+) {
 	if len(pods) == 0 {
 		b.SendMessage(chatID, "📭 "+formatters.EscapeHTML(heading)+" — none found.")
 		return
@@ -315,7 +356,7 @@ func (b *Bot) showPodResults(ctx context.Context, chatID int64, messageID int, p
 		fmt.Sprintf("<b>%s</b> — %d", formatters.EscapeHTML(heading), len(pods)), &kb)
 }
 
-func (b *Bot) showNodeTop(ctx context.Context, chatID int64, node string, session *types.UserSession) {
+func (b *Bot) showNodeTop(ctx context.Context, chatID int64, node string) {
 	metrics, err := b.k8sClient.GetNodeMetrics(ctx)
 	if err != nil {
 		// metrics-server is optional; say so rather than showing a raw 404.
@@ -388,7 +429,14 @@ func (b *Bot) showManifest(ctx context.Context, chatID int64, kind, ns, name str
 	b.SendRich(chatID, rich, fmt.Sprintf("📄 Manifest for %s", formatters.EscapeHTML(name)))
 }
 
-func (b *Bot) setNodeSchedulable(ctx context.Context, chatID int64, messageID int, node string, schedulable bool, session *types.UserSession) {
+func (b *Bot) setNodeSchedulable(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	node string,
+	schedulable bool,
+	session *types.UserSession,
+) {
 	verb := "Cordon"
 	if schedulable {
 		verb = "Uncordon"
@@ -465,9 +513,9 @@ func (b *Bot) showScaleOptions(ctx context.Context, chatID int64, messageID int,
 		err     error
 	)
 	switch kind {
-	case "deployments":
+	case kindDeployments:
 		current, err = b.k8sClient.GetDeploymentReplicas(ctx, ns, name)
-	case "replicasets":
+	case kindReplicaSets:
 		current, err = b.k8sClient.GetReplicaSetReplicas(ctx, ns, name)
 	default:
 		b.SendMessage(chatID, "❌ Only deployments and replicasets can be scaled.")
@@ -481,7 +529,7 @@ func (b *Bot) showScaleOptions(ctx context.Context, chatID int64, messageID int,
 	text := fmt.Sprintf("📈 <b>Scale %s</b>\n\n<code>%s</code> in <code>%s</code>\nCurrent replicas: <b>%d</b>",
 		formatters.EscapeHTML(kind), formatters.EscapeHTML(name),
 		formatters.EscapeHTML(nsDisplay(ns)), current)
-	if kind == "replicasets" {
+	if kind == kindReplicaSets {
 		text += "\n\n⚠️ If a Deployment owns this ReplicaSet, its controller will revert the change within seconds. Scale the Deployment instead."
 	}
 
@@ -489,7 +537,16 @@ func (b *Bot) showScaleOptions(ctx context.Context, chatID int64, messageID int,
 	b.editView(ctx, chatID, messageID, text, &kb)
 }
 
-func (b *Bot) applyScale(ctx context.Context, chatID int64, messageID int, kind, ns, name, replicasArg string, session *types.UserSession) {
+func (b *Bot) applyScale(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	kind,
+	ns,
+	name,
+	replicasArg string,
+	session *types.UserSession,
+) {
 	replicas, err := strconv.ParseInt(replicasArg, 10, 32)
 	if err != nil || replicas < 0 {
 		b.SendMessage(chatID, fmt.Sprintf("❌ Invalid replica count: %s", formatters.EscapeHTML(replicasArg)))
@@ -497,9 +554,9 @@ func (b *Bot) applyScale(ctx context.Context, chatID int64, messageID int, kind,
 	}
 
 	switch kind {
-	case "deployments":
+	case kindDeployments:
 		err = b.k8sClient.ScaleDeployment(ctx, ns, name, int32(replicas))
-	case "replicasets":
+	case kindReplicaSets:
 		err = b.k8sClient.ScaleReplicaSet(ctx, ns, name, int32(replicas))
 	default:
 		b.SendMessage(chatID, "❌ Only deployments and replicasets can be scaled.")

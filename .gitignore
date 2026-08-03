@@ -1,5 +1,6 @@
 # Binaries
-k8s-telegram-bot
+# Anchored: a bare "telectl" would also ignore cmd/telectl/.
+/telectl
 dist/
 
 # Go
@@ -34,4 +35,4 @@ vendor/
 # Temporary
 tmp/
 temp/
-*.tmpk8sbot
+*.tmp

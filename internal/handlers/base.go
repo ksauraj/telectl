@@ -2,16 +2,21 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/ksauraj/telectl/internal/config"
 	"github.com/ksauraj/telectl/internal/k8s"
-	"github.com/ksauraj/telectl/internal/menus"
 	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
-	"github.com/ksauraj/telectl/internal/utils/formatters"
 	"go.uber.org/zap"
+)
+
+// Flag spellings accepted by the command parsers, and the one output format
+// name compared against in more than one place.
+const (
+	flagNamespaceShort = "-n"
+	flagNamespaceLong  = "--namespace"
+	formatWide         = "wide"
 )
 
 type CommandHandler interface {
@@ -29,7 +34,7 @@ func NewBaseHandler(b types.BotInterface) *BaseHandler {
 func (h *BaseHandler) getNamespace(session *types.UserSession, args []string, defaultNS string) string {
 	// Check for -n or --namespace flag
 	for i, arg := range args {
-		if arg == "-n" || arg == "--namespace" {
+		if arg == flagNamespaceShort || arg == flagNamespaceLong {
 			if i+1 < len(args) {
 				return args[i+1]
 			}
@@ -49,29 +54,11 @@ func (h *BaseHandler) getNamespace(session *types.UserSession, args []string, de
 	return defaultNS
 }
 
-func (h *BaseHandler) getContext(session *types.UserSession) string {
-	return session.CurrentCtx
-}
-
 func (h *BaseHandler) sendResponse(chatID int64, text string) {
 	h.bot.SendLongMessage(chatID, text)
 }
 
-func (h *BaseHandler) sendError(chatID int64, err error) {
-	h.bot.SendText(chatID, fmt.Sprintf("❌ Error: %s", err.Error()))
-}
-
-func (h *BaseHandler) sendFormatted(chatID int64, resources []k8s.ResourceInfo, format string, wide bool) {
-	output := formatters.FormatResourceList(resources, format, wide)
-	h.sendResponse(chatID, output)
-}
-
-func (h *BaseHandler) sendSingleResource(chatID int64, resource *k8s.ResourceInfo, format string) {
-	output := formatters.FormatResource(resource, format)
-	h.sendResponse(chatID, output)
-}
-
-// Helper to parse common flags
+// Helper to parse common flags.
 func parseFlags(args []string) (namespace, output, selector, fieldSelector string, remaining []string) {
 	namespace = ""
 	output = ""
@@ -82,7 +69,7 @@ func parseFlags(args []string) (namespace, output, selector, fieldSelector strin
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
-		case arg == "-n" || arg == "--namespace":
+		case arg == flagNamespaceShort || arg == flagNamespaceLong:
 			if i+1 < len(args) {
 				namespace = args[i+1]
 				i++
@@ -122,7 +109,7 @@ func parseFlags(args []string) (namespace, output, selector, fieldSelector strin
 			remaining = append(remaining, arg)
 		}
 	}
-	return
+	return namespace, output, selector, fieldSelector, remaining
 }
 
 func (h *BaseHandler) getK8sClient() *k8s.Client {
@@ -143,22 +130,6 @@ func (h *BaseHandler) getLogger() *zap.Logger {
 func (h *BaseHandler) getConfig() *config.Config {
 	if c, ok := h.bot.Config().(*config.Config); ok {
 		return c
-	}
-	return nil
-}
-
-// getAPI returns the typed *tg.Bot from the bot.
-func (h *BaseHandler) getAPI() *tg.Bot {
-	if a, ok := h.bot.API().(*tg.Bot); ok {
-		return a
-	}
-	return nil
-}
-
-// getMenuBuilder returns the typed *menus.MenuBuilder from the bot.
-func (h *BaseHandler) getMenuBuilder() *menus.MenuBuilder {
-	if m, ok := h.bot.MenuBuilder().(*menus.MenuBuilder); ok {
-		return m
 	}
 	return nil
 }

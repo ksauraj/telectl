@@ -66,7 +66,14 @@ func joinSelector(m map[string]interface{}) string {
 //
 // It resolves the selector from the live object rather than guessing from the
 // name, because a pod's name prefix is not a reliable ownership signal.
-func (c *Client) ListPodsForWorkload(ctx context.Context, kind, namespace, name string) ([]ResourceInfo, string, error) {
+func (c *Client) ListPodsForWorkload(
+	ctx context.Context,
+	kind,
+	namespace,
+	name string) ([]ResourceInfo,
+	string,
+	error,
+) {
 	var (
 		obj *ResourceInfo
 		err error
@@ -104,7 +111,7 @@ func (c *Client) ListPodsForWorkload(ctx context.Context, kind, namespace, name 
 // GetEndpoints returns the Endpoints object backing a service, which is what
 // tells you whether a service actually has ready backends.
 func (c *Client) GetEndpoints(ctx context.Context, namespace, name string) (*ResourceInfo, error) {
-	return c.GetResource(ctx, endpointsGVR(), namespace, name)
+	return c.GetResource(ctx, endpointsGVR, namespace, name)
 }
 
 // EndpointAddresses flattens an Endpoints object into "ip:port" strings, split
@@ -213,7 +220,7 @@ func (c *Client) RolloutHistory(ctx context.Context, namespace, name string) ([]
 
 	currentRevision := annotation(deploy, "deployment.kubernetes.io/revision")
 
-	var out []Revision
+	out := make([]Revision, 0, len(sets))
 	for i := range sets {
 		rs := &sets[i]
 		if !ownedBy(rs, "Deployment", name) {
@@ -340,11 +347,6 @@ var namespaceSummaryKinds = []struct {
 	{"StatefulSets", schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "statefulsets"}},
 	{"DaemonSets", schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "daemonsets"}},
 	{"Events", schema.GroupVersionResource{Group: "", Version: "v1", Resource: "events"}},
-}
-
-// endpointsGVR returns the GVR for the core Endpoints resource.
-func endpointsGVR() schema.GroupVersionResource {
-	return schema.GroupVersionResource{Group: "", Version: "v1", Resource: "endpoints"}
 }
 
 func ownedBy(r *ResourceInfo, kind, name string) bool {

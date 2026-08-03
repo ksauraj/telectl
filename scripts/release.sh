@@ -1,5 +1,5 @@
 #!/bin/bash
-# Release script for k8s-telegram-bot
+# Release script for telectl
 
 set -euo pipefail
 
@@ -42,4 +42,4 @@ git push origin "$VERSION"
 echo ""
 echo "✅ Release $VERSION initiated!"
 echo "GitHub Actions will build and publish the release."
-echo "Check: https://github.com/ksauraj/k8s-telegram-bot/actions"
+echo "Check: https://github.com/ksauraj/telectl/actions"

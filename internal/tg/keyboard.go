@@ -47,7 +47,7 @@ func KeyboardButtonText(text string) KeyboardButton {
 	return KeyboardButton{Text: text}
 }
 
-// Backward-compat aliases matching old tgbotapi patterns
+// Backward-compat aliases matching old tgbotapi patterns.
 func ReplyKeyboard(rows ...[]KeyboardButton) ReplyKeyboardMarkup {
 	return NewReplyKeyboard(rows...)
 }
@@ -72,7 +72,7 @@ func InlineKeyboardButtonURL(text, url string) InlineKeyboardButton {
 	return InlineKeyboardButton{Text: text, URL: url}
 }
 
-// Alias for code using InlineButtonData name - returns InlineKeyboardButton
+// Alias for code using InlineButtonData name - returns InlineKeyboardButton.
 func InlineButtonData(text, data string) InlineKeyboardButton {
 	return InlineKeyboardButton{Text: text, CallbackData: data}
 }

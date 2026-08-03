@@ -52,16 +52,17 @@ func (h *ExecHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 	commandStart := 1
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
-		if arg == "-c" || arg == "--container" {
+		switch {
+		case arg == "-c" || arg == "--container":
 			if i+1 < len(args) {
 				container = args[i+1]
 				commandStart = i + 2
 				i++
 			}
-		} else if strings.HasPrefix(arg, "-c=") {
+		case strings.HasPrefix(arg, "-c="):
 			container = strings.TrimPrefix(arg, "-c=")
 			commandStart = i + 1
-		} else if strings.HasPrefix(arg, "--container=") {
+		case strings.HasPrefix(arg, "--container="):
 			container = strings.TrimPrefix(arg, "--container=")
 			commandStart = i + 1
 		}
@@ -107,7 +108,14 @@ func (h *ExecHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 	return h.executeCommand(ctx, msg, client, podName, namespace, container, command)
 }
 
-func (h *ExecHandler) startInteractiveSession(ctx context.Context, msg *tg.Message, session *types.UserSession, podName, namespace, container string) error {
+func (h *ExecHandler) startInteractiveSession(
+	ctx context.Context,
+	msg *tg.Message,
+	session *types.UserSession,
+	podName,
+	namespace,
+	container string,
+) error {
 	chatID := msg.Chat.ID
 
 	// Check if user already has an active session
@@ -181,7 +189,15 @@ func (h *ExecHandler) startInteractiveSession(ctx context.Context, msg *tg.Messa
 	return nil
 }
 
-func (h *ExecHandler) executeCommand(ctx context.Context, msg *tg.Message, client *k8s.Client, podName, namespace, container string, command []string) error {
+func (h *ExecHandler) executeCommand(
+	ctx context.Context,
+	msg *tg.Message,
+	client *k8s.Client,
+	podName,
+	namespace,
+	container string,
+	command []string,
+) error {
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}
 

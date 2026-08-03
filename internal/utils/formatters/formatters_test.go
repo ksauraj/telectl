@@ -1,11 +1,13 @@
 package formatters
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/ksauraj/telectl/internal/k8s"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -96,32 +98,50 @@ func TestFormatResourceList(t *testing.T) {
 	assert.Contains(t, output, "pod-2")
 }
 
+// formatAge must be exercised directly. This test previously called a local
+// formatAgeForTest that returned hardcoded strings, so it passed no matter what
+// formatAge actually did.
 func TestFormatAge(t *testing.T) {
 	now := time.Now()
 
-	// Test seconds
-	t1 := now.Add(-30 * time.Second)
-	assert.Equal(t, "30s", formatAgeForTest(t1))
+	cases := []struct {
+		name string
+		when time.Time
+		want string
+	}{
+		{"seconds", now.Add(-30 * time.Second), "30s"},
+		{"minutes", now.Add(-5 * time.Minute), "5m"},
+		{"hours", now.Add(-3 * time.Hour), "3h"},
+		{"days", now.Add(-2 * 24 * time.Hour), "2d"},
+		{"months", now.Add(-3 * 30 * 24 * time.Hour), "3mo"},
+		{"years", now.Add(-2 * 365 * 24 * time.Hour), "2y"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, formatAge(tc.when))
+		})
+	}
+}
 
-	// Test minutes
-	t2 := now.Add(-5 * time.Minute)
-	assert.Equal(t, "5m", formatAgeForTest(t2))
-
-	// Test hours
-	t3 := now.Add(-3 * time.Hour)
-	assert.Equal(t, "3h", formatAgeForTest(t3))
-
-	// Test days
-	t4 := now.Add(-2 * 24 * time.Hour)
-	assert.Equal(t, "2d", formatAgeForTest(t4))
-
-	// Test months
-	t5 := now.Add(-3 * 30 * 24 * time.Hour)
-	assert.Equal(t, "3mo", formatAgeForTest(t5))
-
-	// Test years
-	t6 := now.Add(-2 * 365 * 24 * time.Hour)
-	assert.Equal(t, "2y", formatAgeForTest(t6))
+// Boundaries are where an age formatter goes wrong: 24h must read as a day,
+// not 24 hours, and the unit must switch exactly once.
+func TestFormatAgeBoundaries(t *testing.T) {
+	now := time.Now()
+	cases := []struct {
+		when time.Time
+		want string
+	}{
+		{now.Add(-59 * time.Second), "59s"},
+		{now.Add(-60 * time.Second), "1m"},
+		{now.Add(-59 * time.Minute), "59m"},
+		{now.Add(-60 * time.Minute), "1h"},
+		{now.Add(-23 * time.Hour), "23h"},
+		{now.Add(-24 * time.Hour), "1d"},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, formatAge(tc.when),
+			"age of %s", time.Since(tc.when).Round(time.Second))
+	}
 }
 
 func TestFormatLabels(t *testing.T) {
@@ -156,11 +176,23 @@ line 5`
 	assert.Equal(t, logs, output)
 }
 
-func TestSanitizeMarkdown(t *testing.T) {
-	text := "Hello *world* _test_ [link](url)"
-	// Note: This would need the bot package's SanitizeMarkdown
-	// For now just test the concept
-	assert.NotEmpty(t, text)
+// EscapeMDV2 must escape every character Telegram's MarkdownV2 reserves;
+// an unescaped one makes the API reject the whole message with a 400.
+func TestEscapeMDV2(t *testing.T) {
+	got := EscapeMDV2("Hello *world* _test_ [link](url) a.b-c!")
+	for _, c := range []string{"*", "_", "[", "]", "(", ")", ".", "-", "!"} {
+		assert.NotContains(t, strings.ReplaceAll(got, "\\"+c, ""), c,
+			"unescaped %q would make Telegram reject the message", c)
+	}
+	assert.Equal(t, "plain", EscapeMDV2("plain"))
+}
+
+// EscapeHTML must neutralise the characters Telegram's HTML mode parses as
+// markup, or a resource name containing < would truncate the message.
+func TestEscapeHTML(t *testing.T) {
+	assert.Equal(t, "&lt;b&gt;", EscapeHTML("<b>"))
+	assert.Equal(t, "a &amp; b", EscapeHTML("a & b"))
+	assert.Equal(t, "plain-name", EscapeHTML("plain-name"))
 }
 
 func TestTruncateString(t *testing.T) {
@@ -174,54 +206,81 @@ func TestTruncateString(t *testing.T) {
 	assert.Equal(t, "Short", output)
 }
 
-func TestParseResourceArg(t *testing.T) {
-	tests := []struct {
-		input     string
-		resource  string
-		name      string
-		namespace string
-	}{
-		{"pod/my-pod", "pod", "my-pod", ""},
-		{"deployment/my-app", "deployment", "my-app", ""},
-		{"namespace/default", "", "default", "namespace"},
-		{"my-pod", "", "my-pod", ""},
+// StatusEmoji drives the status glyph in every list and detail pane; an
+// unmapped status must fall back rather than render empty.
+func TestStatusEmoji(t *testing.T) {
+	cases := map[string]string{
+		"Running":          "🟢",
+		"running":          "🟢",
+		"Pending":          "🟡",
+		"Failed":           "🔴",
+		"CrashLoopBackOff": "🔴",
+		"Terminating":      "🟠",
+		"Unknown":          "❓",
+		"":                 "•",
+		"SomethingNew":     "•",
 	}
-
-	for _, tt := range tests {
-		// Note: This would need the bot package's ParseResourceArg
-		// Testing the concept
-		_ = tt
+	for status, want := range cases {
+		assert.Equal(t, want, StatusEmoji(status), "status %q", status)
 	}
 }
 
-// Helper functions for testing
+// Helper functions for testing.
 func metav1Time(t time.Time) metav1.Time {
 	return metav1.Time{Time: t}
 }
 
-func formatAgeForTest(t time.Time) string {
-	duration := time.Since(t)
-	if duration.Hours() >= 24*365 {
-		return "2y" // simplified
-	} else if duration.Hours() >= 24*30 {
-		return "3mo"
-	} else if duration.Hours() >= 24 {
-		return "2d"
-	} else if duration.Hours() >= 1 {
-		return "3h"
-	} else if duration.Minutes() >= 1 {
-		return "5m"
+// columnsForKind must hand back a slice that does not share storage with the
+// package-level table. Callers append to the result, and when a kind has no
+// wide columns `append(base)` returns the shared slice itself.
+//
+// Note the check is pointer identity, not "append and see if it leaks": the
+// map's slice literals have len == cap, so an append always reallocates and an
+// append-based test would pass even against a deliberately aliased return.
+func TestColumnsForKindDoesNotAliasTheTable(t *testing.T) {
+	for _, kind := range []string{"Pod", "Service", "Event"} {
+		t.Run(kind, func(t *testing.T) {
+			table := kindColumns[kind]
+			require.NotEmpty(t, table, "fixture kind has no table")
+
+			for _, wide := range []bool{false, true} {
+				got := columnsForKind(kind, wide)
+				require.NotEmpty(t, got)
+				if &got[0] == &table[0] {
+					t.Errorf("columnsForKind(%q, %v) returned the shared table; a caller's "+
+						"append would mutate every later render", kind, wide)
+				}
+			}
+		})
 	}
-	return "30s"
 }
 
-func formatLabelsForTest(labels map[string]string) string {
-	if len(labels) == 0 {
-		return "<none>"
+// Wide output must add columns for kinds that define them and be a no-op for
+// kinds that do not.
+func TestColumnsForKindWide(t *testing.T) {
+	narrow := columnsForKind("Pod", false)
+	wide := columnsForKind("Pod", true)
+	if len(wide) <= len(narrow) {
+		t.Errorf("wide Pod columns (%d) should exceed narrow (%d)", len(wide), len(narrow))
 	}
-	var parts []string
-	for k, v := range labels {
-		parts = append(parts, k+"="+v)
+
+	headers := make([]string, 0, len(wide))
+	for _, c := range wide {
+		headers = append(headers, c.Header)
 	}
-	return parts[0] // simplified for test
+	for _, want := range []string{"NODE", "IP", "LABELS"} {
+		assert.Contains(t, headers, want)
+	}
+
+	// Service defines no wide columns; wide must not change the set.
+	assert.Equal(t, len(columnsForKind("Service", false)), len(columnsForKind("Service", true)))
+}
+
+// An unknown kind must still render a usable table rather than none.
+func TestColumnsForKindUnknownFallsBack(t *testing.T) {
+	cols := columnsForKind("CustomResourceThing", false)
+	if len(cols) == 0 {
+		t.Fatal("unknown kind produced no columns")
+	}
+	assert.Equal(t, "NAME", cols[0].Header)
 }

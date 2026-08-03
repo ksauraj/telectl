@@ -228,7 +228,7 @@ func TestSaveRoundTripsThroughParse(t *testing.T) {
 	assert.Equal(t, "ctx-token", again.CurrentContext)
 	assert.Len(t, again.Contexts, 3)
 
-	var names []string
+	names := make([]string, 0, len(again.Contexts))
 	for _, c := range again.Contexts {
 		names = append(names, c.Name)
 	}

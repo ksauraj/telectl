@@ -37,14 +37,20 @@ func (h *TopHandler) Handle(ctx context.Context, msg *tg.Message, args []string,
 	case "pod", "pods", "po":
 		return h.topPods(ctx, msg, client, namespace, args[1:])
 	case "node", "nodes", "no":
-		return h.topNodes(ctx, msg, client, args[1:])
+		return h.topNodes(ctx, msg, client)
 	default:
 		h.sendResponse(msg.Chat.ID, "Unknown resource. Use 'pods' or 'nodes'")
 		return nil
 	}
 }
 
-func (h *TopHandler) topPods(ctx context.Context, msg *tg.Message, client *k8s.Client, namespace string, args []string) error {
+func (h *TopHandler) topPods(
+	ctx context.Context,
+	msg *tg.Message,
+	client *k8s.Client,
+	namespace string,
+	args []string,
+) error {
 	// Try to get metrics from metrics.k8s.io API
 	resources, err := client.ListResources(ctx, schema.GroupVersionResource{
 		Group:    "metrics.k8s.io",
@@ -79,7 +85,7 @@ func (h *TopHandler) topPods(ctx context.Context, msg *tg.Message, client *k8s.C
 	return nil
 }
 
-func (h *TopHandler) topNodes(ctx context.Context, msg *tg.Message, client *k8s.Client, args []string) error {
+func (h *TopHandler) topNodes(ctx context.Context, msg *tg.Message, client *k8s.Client) error {
 	resources, err := client.ListResources(ctx, schema.GroupVersionResource{
 		Group:    "metrics.k8s.io",
 		Version:  "v1beta1",

@@ -362,12 +362,8 @@ func RichHelpForResource(kind string) string {
 	}
 
 	rows := make([][]string, 0, 12)
-	for _, r := range perKind[kind] {
-		rows = append(rows, r)
-	}
-	for _, r := range common {
-		rows = append(rows, r)
-	}
+	rows = append(rows, perKind[kind]...)
+	rows = append(rows, common...)
 	d.Table([]string{"BUTTON", "WHAT IT DOES"}, rows, tg.TableOpts{})
 	return d.String()
 }

@@ -79,7 +79,13 @@ func TestRichTableFlattensNewlines(t *testing.T) {
 	d.Table([]string{"A"}, [][]string{{"line1\nline2"}}, TableOpts{})
 	got := d.String()
 
-	body := got[strings.Index(got, "line1"):]
+	// Index returns -1 when absent, which would panic the slice below. Fail
+	// with a readable message instead.
+	i := strings.Index(got, "line1")
+	if i < 0 {
+		t.Fatalf("table cell content missing entirely:\n%q", got)
+	}
+	body := got[i:]
 	if strings.Contains(body[:len("line1 line2")], "\n") {
 		t.Errorf("newline survived inside a cell:\n%q", got)
 	}

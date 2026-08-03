@@ -17,6 +17,10 @@ import (
 // TelegramMarkdownV2Escape escapes a string for Telegram MarkdownV2.
 // Per https://core.telegram.org/bots/api#markdownv2-style these chars must be
 // backslash-escaped: _ * [ ] ( ) ~ ` > # + - = | { } . !
+// noneValue is what an absent field renders as, matching kubectl's own output
+// so a column reads the same in chat as it does in a terminal.
+const noneValue = "<none>"
+
 func EscapeMDV2(s string) string {
 	special := []string{"_", "*", "[", "]", "(", ")", "~", "`", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"}
 	out := s
@@ -42,32 +46,43 @@ func EscapeHTML(s string) string {
 	return s
 }
 
+// Status glyphs. Named so the "which statuses are bad" grouping below is
+// explicit rather than three separate copies of the same emoji.
+const (
+	emojiHealthy  = "🟢"
+	emojiDone     = "⚫"
+	emojiWaiting  = "🟡"
+	emojiBroken   = "🔴"
+	emojiStopping = "🟠"
+	emojiUnknown  = "❓"
+	emojiNeutral  = "•"
+)
+
 // StatusEmoji returns an emoji representing a Kubernetes resource status.
+//
+// An unrecognised status falls back to the neutral glyph rather than an empty
+// string: a missing leading character silently shifts every column of the
+// fixed-width tables.
 func StatusEmoji(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "running":
-		return "🟢"
+		return emojiHealthy
 	case "succeeded", "completed":
-		return "⚫"
+		return emojiDone
 	case "pending":
-		return "🟡"
-	case "failed":
-		return "🔴"
-	case "crashloopbackoff":
-		return "🔴"
+		return emojiWaiting
+	case "failed", "crashloopbackoff", "error":
+		return emojiBroken
 	case "terminating":
-		return "🟠"
-	case "error":
-		return "🔴"
+		return emojiStopping
 	case "unknown":
-		return "❓"
-	case "":
-		return "•"
+		return emojiUnknown
+	default:
+		return emojiNeutral
 	}
-	return "•"
 }
 
-// FormatResource formats a single resource for display
+// FormatResource formats a single resource for display.
 func FormatResource(resource *k8s.ResourceInfo, format string) string {
 	switch format {
 	case "json":
@@ -184,7 +199,7 @@ func formatResourceListTable(resources []k8s.ResourceInfo, wide bool) string {
 	}
 	rows := make([][]string, 0, len(resources))
 	for _, r := range resources {
-		rows = append(rows, rowForKind(cols, &r, kind))
+		rows = append(rows, rowForKind(cols, &r))
 	}
 
 	// Compute column widths.
@@ -252,118 +267,127 @@ type tableColumn struct {
 	Render func(r *k8s.ResourceInfo) string
 }
 
-// columnsForKind returns the column set for a given resource kind.
-func columnsForKind(kind string, wide bool) []tableColumn {
-	switch kind {
-	case "Pod":
-		base := []tableColumn{
-			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
-			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
-			{"READY", func(r *k8s.ResourceInfo) string { return podReady(r) }},
-			{"STATUS", func(r *k8s.ResourceInfo) string { return StatusEmoji(r.Status) + " " + emptyToDash(r.Status) }},
-			{"RESTARTS", func(r *k8s.ResourceInfo) string { return strconv.Itoa(podRestarts(r)) }},
-			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
-		}
-		if wide {
-			base = append(base,
-				tableColumn{"NODE", func(r *k8s.ResourceInfo) string { return podNode(r) }},
-				tableColumn{"IP", func(r *k8s.ResourceInfo) string { return podIP(r) }},
-				tableColumn{"LABELS", func(r *k8s.ResourceInfo) string { return formatLabels(r.Labels) }},
-			)
-		}
-		return base
-	case "Deployment":
-		base := []tableColumn{
-			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
-			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
-			{"READY", func(r *k8s.ResourceInfo) string { return deployReady(r) }},
-			{"UP-TO-DATE", func(r *k8s.ResourceInfo) string { return deployUpToDate(r) }},
-			{"AVAILABLE", func(r *k8s.ResourceInfo) string { return deployAvailable(r) }},
-			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
-		}
-		return base
-	case "Service":
-		return []tableColumn{
-			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
-			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
-			{"TYPE", func(r *k8s.ResourceInfo) string { return svcType(r) }},
-			{"CLUSTER-IP", func(r *k8s.ResourceInfo) string { return svcClusterIP(r) }},
-			{"EXTERNAL-IP", func(r *k8s.ResourceInfo) string { return svcExternalIP(r) }},
-			{"PORT(S)", func(r *k8s.ResourceInfo) string { return svcPorts(r) }},
-			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
-		}
-	case "ReplicaSet":
-		return []tableColumn{
-			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
-			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
-			{"DESIRED", func(r *k8s.ResourceInfo) string { return rsIntField(r, "replicas") }},
-			{"CURRENT", func(r *k8s.ResourceInfo) string { return rsIntField(r, "availableReplicas") }},
-			{"READY", func(r *k8s.ResourceInfo) string { return rsIntField(r, "readyReplicas") }},
-			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
-		}
-	case "Namespace":
-		return []tableColumn{
-			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
-			{"STATUS", func(r *k8s.ResourceInfo) string { return StatusEmoji(r.Status) + " " + emptyToDash(r.Status) }},
-			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
-		}
-	case "Node":
-		return []tableColumn{
-			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
-			{"STATUS", func(r *k8s.ResourceInfo) string { return StatusEmoji(r.Status) + " " + emptyToDash(r.Status) }},
-			{"VERSION", func(r *k8s.ResourceInfo) string { return nodeVersion(r) }},
-			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
-		}
-	case "ConfigMap":
-		return []tableColumn{
-			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
-			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
-			{"DATA", func(r *k8s.ResourceInfo) string { return cmDataCount(r) }},
-			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
-		}
-	case "Secret":
-		return []tableColumn{
-			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
-			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
-			{"TYPE", func(r *k8s.ResourceInfo) string { return secretType(r) }},
-			{"DATA", func(r *k8s.ResourceInfo) string { return cmDataCount(r) }},
-			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
-		}
-	case "PersistentVolumeClaim":
-		return []tableColumn{
-			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
-			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
-			{"STATUS", func(r *k8s.ResourceInfo) string { return StatusEmoji(r.Status) + " " + emptyToDash(r.Status) }},
-			{"CAPACITY", func(r *k8s.ResourceInfo) string { return pvcCapacity(r) }},
-			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
-		}
-	case "Ingress":
-		return []tableColumn{
-			{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
-			{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }},
-			{"HOSTS", func(r *k8s.ResourceInfo) string { return ingressHosts(r) }},
-			{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
-		}
-	case "Event":
-		return []tableColumn{
-			{"TYPE", func(r *k8s.ResourceInfo) string { return eventTypeEmoji(r) + " " + eventType(r) }},
-			{"REASON", func(r *k8s.ResourceInfo) string { return eventReason(r) }},
-			{"OBJECT", func(r *k8s.ResourceInfo) string { return eventObject(r) }},
-			{"MESSAGE", func(r *k8s.ResourceInfo) string { return TruncateString(eventMessage(r), 60) }},
-		}
-	}
+// Column builders shared across kinds. NAME/NAMESPACE/AGE/STATUS appear in
+// almost every table, and previously each kind re-declared its own closure for
+// them — thirteen copies that had to be kept in step by hand.
+var (
+	colName      = tableColumn{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }}
+	colNamespace = tableColumn{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }}
+	colAge       = tableColumn{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }}
+	colStatus    = tableColumn{"STATUS", func(r *k8s.ResourceInfo) string {
+		return StatusEmoji(r.Status) + " " + emptyToDash(r.Status)
+	}}
+)
 
-	// Default generic columns.
-	return []tableColumn{
-		{"NAME", func(r *k8s.ResourceInfo) string { return r.Name }},
-		{"NAMESPACE", func(r *k8s.ResourceInfo) string { return emptyToDash(r.Namespace) }},
-		{"STATUS", func(r *k8s.ResourceInfo) string { return StatusEmoji(r.Status) + " " + emptyToDash(r.Status) }},
-		{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }},
-	}
+// kindColumns maps a Kubernetes kind to the columns its table shows, in order.
+// A kind with no entry falls back to genericColumns.
+var kindColumns = map[string][]tableColumn{
+	"Pod": {
+		colName, colNamespace,
+		{"READY", podReady},
+		colStatus,
+		{"RESTARTS", func(r *k8s.ResourceInfo) string { return strconv.Itoa(podRestarts(r)) }},
+		colAge,
+	},
+	"Deployment": {
+		colName, colNamespace,
+		{"READY", deployReady},
+		{"UP-TO-DATE", deployUpToDate},
+		{"AVAILABLE", deployAvailable},
+		colAge,
+	},
+	"Service": {
+		colName, colNamespace,
+		{"TYPE", svcType},
+		{"CLUSTER-IP", svcClusterIP},
+		{"EXTERNAL-IP", svcExternalIP},
+		{"PORT(S)", svcPorts},
+		colAge,
+	},
+	"ReplicaSet": {
+		colName, colNamespace,
+		{"DESIRED", func(r *k8s.ResourceInfo) string { return rsIntField(r, "replicas") }},
+		{"CURRENT", func(r *k8s.ResourceInfo) string { return rsIntField(r, "availableReplicas") }},
+		{"READY", func(r *k8s.ResourceInfo) string { return rsIntField(r, "readyReplicas") }},
+		colAge,
+	},
+	"Namespace": {colName, colStatus, colAge},
+	"Node": {
+		colName, colStatus,
+		{"VERSION", nodeVersion},
+		colAge,
+	},
+	"ConfigMap": {
+		colName, colNamespace,
+		{"DATA", cmDataCount},
+		colAge,
+	},
+	"Secret": {
+		colName, colNamespace,
+		{"TYPE", secretType},
+		{"DATA", cmDataCount},
+		colAge,
+	},
+	"PersistentVolumeClaim": {
+		colName, colNamespace, colStatus,
+		{"CAPACITY", pvcCapacity},
+		colAge,
+	},
+	"Ingress": {
+		colName, colNamespace,
+		{"HOSTS", ingressHosts},
+		colAge,
+	},
+	"Event": {
+		{"TYPE", func(r *k8s.ResourceInfo) string { return eventTypeEmoji(r) + " " + eventType(r) }},
+		{"REASON", eventReason},
+		{"OBJECT", eventObject},
+		{"MESSAGE", func(r *k8s.ResourceInfo) string { return TruncateString(eventMessage(r), 60) }},
+	},
 }
 
-// rowForKind renders a row for the given column set.
-func rowForKind(cols []tableColumn, r *k8s.ResourceInfo, kind string) []string {
+// wideColumns are appended in -o wide, per kind.
+var wideColumns = map[string][]tableColumn{
+	"Pod": {
+		{"NODE", podNode},
+		{"IP", podIP},
+		{"LABELS", func(r *k8s.ResourceInfo) string { return formatLabels(r.Labels) }},
+	},
+}
+
+// genericColumns is the fallback for kinds with no specific table.
+var genericColumns = []tableColumn{
+	colName,
+	{"NAMESPACE", func(r *k8s.ResourceInfo) string { return emptyToDash(r.Namespace) }},
+	colStatus,
+	colAge,
+}
+
+// columnsForKind returns the column set for a resource kind, plus the extra
+// columns for wide output.
+//
+// The returned slice is always a fresh copy: callers append to it, and handing
+// back the package-level slice would let one call mutate the table for every
+// later one.
+func columnsForKind(kind string, wide bool) []tableColumn {
+	base, ok := kindColumns[kind]
+	if !ok {
+		base = genericColumns
+	}
+	extra := wideColumns[kind]
+	if !wide {
+		extra = nil
+	}
+
+	out := make([]tableColumn, 0, len(base)+len(extra))
+	out = append(out, base...)
+	out = append(out, extra...)
+	return out
+}
+
+// rowForKind renders a row for the given column set. The kind is already
+// baked into cols by columnsForKind, so it is not needed again here.
+func rowForKind(cols []tableColumn, r *k8s.ResourceInfo) []string {
 	out := make([]string, len(cols))
 	for i, c := range cols {
 		out[i] = c.Render(r)
@@ -489,23 +513,23 @@ func podRestarts(r *k8s.ResourceInfo) int {
 func podNode(r *k8s.ResourceInfo) string {
 	spec := getMap(r.Details, "spec")
 	if spec == nil {
-		return "<none>"
+		return noneValue
 	}
 	if n := getString(spec, "nodeName"); n != "" {
 		return n
 	}
-	return "<none>"
+	return noneValue
 }
 
 func podIP(r *k8s.ResourceInfo) string {
 	status := getMap(r.Details, "status")
 	if status == nil {
-		return "<none>"
+		return noneValue
 	}
 	if ip := getString(status, "podIP"); ip != "" {
 		return ip
 	}
-	return "<none>"
+	return noneValue
 }
 
 // ---- Deployment helpers ----
@@ -540,7 +564,7 @@ func svcClusterIP(r *k8s.ResourceInfo) string {
 	if ip := getString(spec, "clusterIP"); ip != "" {
 		return ip
 	}
-	return "<none>"
+	return noneValue
 }
 
 func svcExternalIP(r *k8s.ResourceInfo) string {
@@ -568,7 +592,7 @@ func svcExternalIP(r *k8s.ResourceInfo) string {
 			}
 		}
 	}
-	return "<none>"
+	return noneValue
 }
 
 func statusSvc(r *k8s.ResourceInfo) map[string]interface{} {
@@ -579,7 +603,7 @@ func svcPorts(r *k8s.ResourceInfo) string {
 	spec := getMap(r.Details, "spec")
 	ports, _ := spec["ports"].([]interface{})
 	if len(ports) == 0 {
-		return "<none>"
+		return noneValue
 	}
 	var out []string
 	for _, p := range ports {
@@ -594,11 +618,12 @@ func svcPorts(r *k8s.ResourceInfo) string {
 			if t := getInt64(pm, "nodePort"); t > 0 {
 				np = fmt.Sprintf(":%d", t)
 			}
-			if name != "" {
+			switch {
+			case name != "":
 				out = append(out, fmt.Sprintf("%d/%s%s(%s)", port, proto, np, name))
-			} else if np != "" {
+			case np != "":
 				out = append(out, fmt.Sprintf("%d/%s%s", port, proto, np))
-			} else {
+			default:
 				out = append(out, fmt.Sprintf("%d/%s", port, proto))
 			}
 		}
@@ -640,7 +665,7 @@ func secretType(r *k8s.ResourceInfo) string {
 	if t := getString(r.Details, "type"); t != "" {
 		return t
 	}
-	return "<none>"
+	return noneValue
 }
 
 // ---- PVC helpers ----
@@ -664,7 +689,7 @@ func pvcCapacity(r *k8s.ResourceInfo) string {
 			return q
 		}
 	}
-	return "<none>"
+	return noneValue
 }
 
 // ---- Ingress helpers ----
@@ -726,7 +751,7 @@ func eventReason(r *k8s.ResourceInfo) string {
 func eventObject(r *k8s.ResourceInfo) string {
 	inv := getMap(r.Details, "involvedObject")
 	if inv == nil {
-		return "<none>"
+		return noneValue
 	}
 	kind := getString(inv, "kind")
 	name := getString(inv, "name")
@@ -745,22 +770,23 @@ func eventMessage(r *k8s.ResourceInfo) string {
 
 func emptyToDash(s string) string {
 	if strings.TrimSpace(s) == "" {
-		return "<none>"
+		return noneValue
 	}
 	return s
 }
 
 func formatAge(t time.Time) string {
 	duration := time.Since(t)
-	if duration.Hours() >= 24*365 {
-		return fmt.Sprintf("%dy", int(duration.Hours()/24/365))
-	} else if duration.Hours() >= 24*30 {
-		return fmt.Sprintf("%dmo", int(duration.Hours()/24/30))
-	} else if duration.Hours() >= 24 {
-		return fmt.Sprintf("%dd", int(duration.Hours()/24))
-	} else if duration.Hours() >= 1 {
-		return fmt.Sprintf("%dh", int(duration.Hours()))
-	} else if duration.Minutes() >= 1 {
+	switch hours := duration.Hours(); {
+	case hours >= 24*365:
+		return fmt.Sprintf("%dy", int(hours/24/365))
+	case hours >= 24*30:
+		return fmt.Sprintf("%dmo", int(hours/24/30))
+	case hours >= 24:
+		return fmt.Sprintf("%dd", int(hours/24))
+	case hours >= 1:
+		return fmt.Sprintf("%dh", int(hours))
+	case duration.Minutes() >= 1:
 		return fmt.Sprintf("%dm", int(duration.Minutes()))
 	}
 	return fmt.Sprintf("%ds", int(duration.Seconds()))
@@ -768,9 +794,9 @@ func formatAge(t time.Time) string {
 
 func formatLabels(labels map[string]string) string {
 	if len(labels) == 0 {
-		return "<none>"
+		return noneValue
 	}
-	var parts []string
+	parts := make([]string, 0, len(labels))
 	for k, v := range labels {
 		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
 	}
@@ -826,7 +852,7 @@ func TruncateString(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-// FormatPodLogs formats pod logs for display
+// FormatPodLogs formats pod logs for display.
 func FormatPodLogs(logs string, maxLines int) string {
 	lines := strings.Split(strings.TrimSpace(logs), "\n")
 	if maxLines > 0 && len(lines) > maxLines {
@@ -835,7 +861,7 @@ func FormatPodLogs(logs string, maxLines int) string {
 	return strings.Join(lines, "\n")
 }
 
-// FormatExecOutput formats exec command output
+// FormatExecOutput formats exec command output.
 func FormatExecOutput(stdout, stderr string) string {
 	var sb strings.Builder
 	if stdout != "" {
@@ -851,7 +877,7 @@ func FormatExecOutput(stdout, stderr string) string {
 	return sb.String()
 }
 
-// FormatContexts formats kubeconfig contexts for display
+// FormatContexts formats kubeconfig contexts for display.
 func FormatContexts(contexts []kubeconfig.ContextInfo) string {
 	if len(contexts) == 0 {
 		return "No contexts found"
@@ -874,59 +900,6 @@ func FormatContexts(contexts []kubeconfig.ContextInfo) string {
 	}
 
 	return sb.String()
-}
-
-// ---------- HTML Rich Formatting (for Telegram HTML parse mode) ----------
-
-// FormatResourceAsHTML renders resources as a Telegram-compatible HTML table.
-func FormatResourceAsHTML(resources []k8s.ResourceInfo, kind string) string {
-	if len(resources) == 0 {
-		return "<i>No resources found</i>"
-	}
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("<b>📦 %s (%d)</b>\n\n", kind, len(resources)))
-	sb.WriteString("<pre>")
-	sb.WriteString(htmlTableHeader(kind))
-	for _, r := range resources {
-		sb.WriteString(htmlRow(r, kind))
-	}
-	sb.WriteString("</pre>")
-	return sb.String()
-}
-
-func htmlTableHeader(kind string) string {
-	switch kind {
-	case "Pod":
-		return "NAME                    | NS    | READY | STATUS     | RESTARTS | AGE\n"
-	case "Deployment":
-		return "NAME              | NS    | READY | UP-TO-DATE | AVAILABLE | AGE\n"
-	default:
-		return "NAME        | NS    | STATUS | AGE\n"
-	}
-}
-
-func htmlRow(r k8s.ResourceInfo, kind string) string {
-	name := truncate(r.Name, 42)
-	ns := r.Namespace
-	if ns == "" {
-		ns = "-"
-	}
-	emoji := StatusEmoji(r.Status)
-	status := emptyToDash(r.Status)
-	age := formatAge(r.CreatedAt.Time)
-	switch kind {
-	case "Pod":
-		ready := podReady(&r)
-		restarts := strconv.Itoa(podRestarts(&r))
-		return fmt.Sprintf("%s | %s | %s | %s %s | %s | %s\n", name, ns, ready, emoji, status, restarts, age)
-	case "Deployment":
-		ready := deployReady(&r)
-		up := deployUpToDate(&r)
-		avail := deployAvailable(&r)
-		return fmt.Sprintf("%s | %s | %s | %s | %s | %s\n", name, ns, ready, up, avail, age)
-	default:
-		return fmt.Sprintf("%s | %s | %s %s | %s\n", name, ns, emoji, status, age)
-	}
 }
 
 func truncate(s string, max int) string {

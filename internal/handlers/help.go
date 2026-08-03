@@ -16,7 +16,7 @@ func NewHelpHandler(b types.BotInterface) *HelpHandler {
 }
 
 func (h *HelpHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
-	help := `📚 <b>k8s-telegram-bot Command Reference</b>
+	help := `📚 <b>telectl Command Reference</b>
 
 <b>Resource Commands:</b>
 /get &lt;resource&gt; [name] [-n namespace] [-o json|yaml|wide] [-l selector]

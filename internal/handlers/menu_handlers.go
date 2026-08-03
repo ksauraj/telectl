@@ -15,14 +15,15 @@ func NewResourcesHandler(b types.BotInterface) *ResourcesHandler {
 	return &ResourcesHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *ResourcesHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
+func (h *ResourcesHandler) Handle(
+	ctx context.Context,
+	msg *tg.Message,
+	args []string,
+	session *types.UserSession,
+) error {
 	// This will trigger the menu system to show resource types
 	h.bot.ShowResourceTypes(ctx, msg.Chat.ID, session)
 	return nil
-}
-
-func (h *ResourcesHandler) sendResponse(chatID int64, text string) {
-	h.bot.SendLongMessage(chatID, text)
 }
 
 type MonitorHandler struct {
@@ -38,10 +39,6 @@ func (h *MonitorHandler) Handle(ctx context.Context, msg *tg.Message, args []str
 	return nil
 }
 
-func (h *MonitorHandler) sendResponse(chatID int64, text string) {
-	h.bot.SendLongMessage(chatID, text)
-}
-
 type OperationsHandler struct {
 	*BaseHandler
 }
@@ -50,13 +47,14 @@ func NewOperationsHandler(b types.BotInterface) *OperationsHandler {
 	return &OperationsHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *OperationsHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
+func (h *OperationsHandler) Handle(
+	ctx context.Context,
+	msg *tg.Message,
+	args []string,
+	session *types.UserSession,
+) error {
 	h.bot.ShowOperations(ctx, msg.Chat.ID, session)
 	return nil
-}
-
-func (h *OperationsHandler) sendResponse(chatID int64, text string) {
-	h.bot.SendLongMessage(chatID, text)
 }
 
 type SettingsHandler struct {
@@ -67,11 +65,12 @@ func NewSettingsHandler(b types.BotInterface) *SettingsHandler {
 	return &SettingsHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *SettingsHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
+func (h *SettingsHandler) Handle(
+	ctx context.Context,
+	msg *tg.Message,
+	args []string,
+	session *types.UserSession,
+) error {
 	h.bot.ShowSettings(ctx, msg.Chat.ID, session)
 	return nil
-}
-
-func (h *SettingsHandler) sendResponse(chatID int64, text string) {
-	h.bot.SendLongMessage(chatID, text)
 }

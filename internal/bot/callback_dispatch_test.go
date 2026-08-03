@@ -142,7 +142,7 @@ func itoa(i int) string {
 }
 
 func methodsOf(f *fakeTelegram) []string {
-	var out []string
+	out := make([]string, 0, len(f.sent()))
 	for _, c := range f.sent() {
 		out = append(out, c.Method)
 	}

@@ -89,8 +89,8 @@ func TestSwitchContextDoesNotTouchDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := c.SwitchContext("ctx-two"); err != nil {
-		t.Fatalf("SwitchContext: %v", err)
+	if switchErr := c.SwitchContext("ctx-two"); switchErr != nil {
+		t.Fatalf("SwitchContext: %v", switchErr)
 	}
 
 	after, err := os.ReadFile(path)

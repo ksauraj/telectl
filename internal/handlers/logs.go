@@ -31,13 +31,13 @@ func (h *LogsHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 	podName := args[0]
 	namespace := h.getNamespace(session, args[1:], h.getConfig().Kubernetes.DefaultNamespace)
 
-	// Parse flags
+	// Parse flags. Namespace was already resolved by getNamespace above, so
+	// -n/--namespace and any positional leftovers need no handling here.
 	opts := k8s.PodLogOptions{
 		Namespace: namespace,
 		PodName:   podName,
 	}
 
-	remaining := []string{}
 	for i := 1; i < len(args); i++ {
 		arg := args[i]
 		switch {
@@ -80,8 +80,6 @@ func (h *LogsHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 				sec := int64(d.Seconds())
 				opts.SinceSeconds = &sec
 			}
-		default:
-			remaining = append(remaining, arg)
 		}
 	}
 

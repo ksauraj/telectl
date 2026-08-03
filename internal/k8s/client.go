@@ -26,6 +26,30 @@ import (
 	"k8s.io/client-go/transport/spdy"
 )
 
+// The GroupVersionResources this client works with. Declared once rather than
+// built inline at each call site: an inline literal with a typo'd group or
+// version fails only at runtime, as a "server could not find the requested
+// resource" that reads like a cluster problem rather than a code bug.
+var (
+	podsGVR        = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
+	servicesGVR    = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "services"}
+	namespacesGVR  = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}
+	nodesGVR       = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"}
+	configMapsGVR  = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}
+	secretsGVR     = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"}
+	pvcsGVR        = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumeclaims"}
+	pvsGVR         = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumes"}
+	eventsGVR      = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "events"}
+	endpointsGVR   = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "endpoints"}
+	deploymentsGVR = schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}
+	replicaSetsGVR = schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "replicasets"}
+	ingressesGVR   = schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"}
+
+	// Served by metrics-server, which is optional; callers must handle a
+	// NotFound from these as "metrics unavailable", not as a failure.
+	nodeMetricsGVR = schema.GroupVersionResource{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "nodes"}
+)
+
 type Client struct {
 	// clientset is the interface, not *kubernetes.Clientset, so tests can
 	// inject a fake and exercise the typed verbs (cordon, drain, scale)
@@ -263,7 +287,14 @@ func (c *Client) GetClientset() kubernetes.Interface {
 
 // ===== Generic Resource Operations =====
 
-func (c *Client) ListResources(ctx context.Context, gvr schema.GroupVersionResource, namespace, labelSelector, fieldSelector string) ([]ResourceInfo, error) {
+func (c *Client) ListResources(
+	ctx context.Context,
+	gvr schema.GroupVersionResource,
+	namespace,
+	labelSelector,
+	fieldSelector string) ([]ResourceInfo,
+	error,
+) {
 	var ri dynamic.ResourceInterface
 	if namespace != "" {
 		ri = c.dynamicClient.Resource(gvr).Namespace(namespace)
@@ -279,14 +310,19 @@ func (c *Client) ListResources(ctx context.Context, gvr schema.GroupVersionResou
 		return nil, fmt.Errorf("failed to list resources: %w", err)
 	}
 
-	var resources []ResourceInfo
+	resources := make([]ResourceInfo, 0, len(list.Items))
 	for _, item := range list.Items {
 		resources = append(resources, c.unstructuredToResourceInfo(&item))
 	}
 	return resources, nil
 }
 
-func (c *Client) GetResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string) (*ResourceInfo, error) {
+func (c *Client) GetResource(
+	ctx context.Context,
+	gvr schema.GroupVersionResource,
+	namespace,
+	name string,
+) (*ResourceInfo, error) {
 	var ri dynamic.ResourceInterface
 	if namespace != "" {
 		ri = c.dynamicClient.Resource(gvr).Namespace(namespace)
@@ -303,7 +339,13 @@ func (c *Client) GetResource(ctx context.Context, gvr schema.GroupVersionResourc
 	return &info, nil
 }
 
-func (c *Client) DeleteResource(ctx context.Context, gvr schema.GroupVersionResource, namespace, name string, options *metav1.DeleteOptions) error {
+func (c *Client) DeleteResource(
+	ctx context.Context,
+	gvr schema.GroupVersionResource,
+	namespace,
+	name string,
+	options *metav1.DeleteOptions,
+) error {
 	var ri dynamic.ResourceInterface
 	if namespace != "" {
 		ri = c.dynamicClient.Resource(gvr).Namespace(namespace)
@@ -357,11 +399,11 @@ func (c *Client) unstructuredToResourceInfo(u *unstructured.Unstructured) Resour
 // ===== Pod Operations =====
 
 func (c *Client) ListPods(ctx context.Context, namespace, labelSelector, fieldSelector string) ([]ResourceInfo, error) {
-	return c.ListResources(ctx, schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}, namespace, labelSelector, fieldSelector)
+	return c.ListResources(ctx, podsGVR, namespace, labelSelector, fieldSelector)
 }
 
 func (c *Client) GetPod(ctx context.Context, namespace, name string) (*ResourceInfo, error) {
-	return c.GetResource(ctx, schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}, namespace, name)
+	return c.GetResource(ctx, podsGVR, namespace, name)
 }
 
 func (c *Client) GetPodLogs(ctx context.Context, opts PodLogOptions) (io.ReadCloser, error) {
@@ -399,7 +441,10 @@ func (c *Client) ExecInPod(ctx context.Context, opts ExecOptions) error {
 		return fmt.Errorf("failed to create executor: %w", err)
 	}
 
-	return exec.Stream(remotecommand.StreamOptions{
+	// StreamWithContext, not Stream: the deprecated form ignores ctx, so a
+	// cancelled or timed-out exec left the SPDY connection and its goroutines
+	// alive until the remote command happened to exit on its own.
+	return exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdin:  opts.Stdin,
 		Stdout: opts.Stdout,
 		Stderr: opts.Stderr,
@@ -432,11 +477,11 @@ func (c *Client) PortForward(ctx context.Context, opts PortForwardOptions) error
 // ===== Deployment Operations =====
 
 func (c *Client) ListDeployments(ctx context.Context, namespace, labelSelector string) ([]ResourceInfo, error) {
-	return c.ListResources(ctx, schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}, namespace, labelSelector, "")
+	return c.ListResources(ctx, deploymentsGVR, namespace, labelSelector, "")
 }
 
 func (c *Client) GetDeployment(ctx context.Context, namespace, name string) (*ResourceInfo, error) {
-	return c.GetResource(ctx, schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}, namespace, name)
+	return c.GetResource(ctx, deploymentsGVR, namespace, name)
 }
 
 func (c *Client) ScaleDeployment(ctx context.Context, namespace, name string, replicas int32) error {
@@ -470,31 +515,31 @@ func (c *Client) RestartDeployment(ctx context.Context, namespace, name string) 
 // ===== Service Operations =====
 
 func (c *Client) ListServices(ctx context.Context, namespace, labelSelector string) ([]ResourceInfo, error) {
-	return c.ListResources(ctx, schema.GroupVersionResource{Group: "", Version: "v1", Resource: "services"}, namespace, labelSelector, "")
+	return c.ListResources(ctx, servicesGVR, namespace, labelSelector, "")
 }
 
 func (c *Client) GetService(ctx context.Context, namespace, name string) (*ResourceInfo, error) {
-	return c.GetResource(ctx, schema.GroupVersionResource{Group: "", Version: "v1", Resource: "services"}, namespace, name)
+	return c.GetResource(ctx, servicesGVR, namespace, name)
 }
 
 // ===== ReplicaSet Operations =====
 
 func (c *Client) ListReplicaSets(ctx context.Context, namespace, labelSelector string) ([]ResourceInfo, error) {
-	return c.ListResources(ctx, schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "replicasets"}, namespace, labelSelector, "")
+	return c.ListResources(ctx, replicaSetsGVR, namespace, labelSelector, "")
 }
 
 func (c *Client) GetReplicaSet(ctx context.Context, namespace, name string) (*ResourceInfo, error) {
-	return c.GetResource(ctx, schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "replicasets"}, namespace, name)
+	return c.GetResource(ctx, replicaSetsGVR, namespace, name)
 }
 
 // ===== Namespace Operations =====
 
 func (c *Client) ListNamespaces(ctx context.Context, labelSelector string) ([]ResourceInfo, error) {
-	return c.ListResources(ctx, schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}, "", labelSelector, "")
+	return c.ListResources(ctx, namespacesGVR, "", labelSelector, "")
 }
 
 func (c *Client) GetNamespace(ctx context.Context, name string) (*ResourceInfo, error) {
-	return c.GetResource(ctx, schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}, "", name)
+	return c.GetResource(ctx, namespacesGVR, "", name)
 }
 
 func (c *Client) CreateNamespace(ctx context.Context, name string, labels map[string]string) error {
@@ -524,53 +569,59 @@ func (c *Client) DeleteNamespace(ctx context.Context, name string) error {
 // ===== Node Operations =====
 
 func (c *Client) ListNodes(ctx context.Context, labelSelector string) ([]ResourceInfo, error) {
-	return c.ListResources(ctx, schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"}, "", labelSelector, "")
+	return c.ListResources(ctx, nodesGVR, "", labelSelector, "")
 }
 
 func (c *Client) GetNode(ctx context.Context, name string) (*ResourceInfo, error) {
-	return c.GetResource(ctx, schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"}, "", name)
+	return c.GetResource(ctx, nodesGVR, "", name)
 }
 
 func (c *Client) GetNodeMetrics(ctx context.Context) ([]ResourceInfo, error) {
 	// This would require metrics-server
-	return c.ListResources(ctx, schema.GroupVersionResource{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "nodes"}, "", "", "")
+	return c.ListResources(ctx, nodeMetricsGVR, "", "", "")
 }
 
 // ===== ConfigMap & Secret Operations =====
 
 func (c *Client) ListConfigMaps(ctx context.Context, namespace, labelSelector string) ([]ResourceInfo, error) {
-	return c.ListResources(ctx, schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}, namespace, labelSelector, "")
+	return c.ListResources(ctx, configMapsGVR, namespace, labelSelector, "")
 }
 
 func (c *Client) ListSecrets(ctx context.Context, namespace, labelSelector string) ([]ResourceInfo, error) {
-	return c.ListResources(ctx, schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"}, namespace, labelSelector, "")
+	return c.ListResources(ctx, secretsGVR, namespace, labelSelector, "")
 }
 
 // ===== PVC/PV Operations =====
 
 func (c *Client) ListPVCs(ctx context.Context, namespace, labelSelector string) ([]ResourceInfo, error) {
-	return c.ListResources(ctx, schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumeclaims"}, namespace, labelSelector, "")
+	return c.ListResources(ctx, pvcsGVR, namespace, labelSelector, "")
 }
 
 func (c *Client) ListPVs(ctx context.Context, labelSelector string) ([]ResourceInfo, error) {
-	return c.ListResources(ctx, schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumes"}, "", labelSelector, "")
+	return c.ListResources(ctx, pvsGVR, "", labelSelector, "")
 }
 
 // ===== Ingress Operations =====
 
 func (c *Client) ListIngresses(ctx context.Context, namespace, labelSelector string) ([]ResourceInfo, error) {
-	return c.ListResources(ctx, schema.GroupVersionResource{Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"}, namespace, labelSelector, "")
+	return c.ListResources(ctx, ingressesGVR, namespace, labelSelector, "")
 }
 
 // ===== Events =====
 
 func (c *Client) GetEvents(ctx context.Context, namespace, fieldSelector string) ([]ResourceInfo, error) {
-	return c.ListResources(ctx, schema.GroupVersionResource{Group: "", Version: "v1", Resource: "events"}, namespace, "", fieldSelector)
+	return c.ListResources(ctx, eventsGVR, namespace, "", fieldSelector)
 }
 
 // ===== Watch Operations =====
 
-func (c *Client) WatchResources(ctx context.Context, gvr schema.GroupVersionResource, namespace string, opts metav1.ListOptions) (watch.Interface, error) {
+func (c *Client) WatchResources(
+	ctx context.Context,
+	gvr schema.GroupVersionResource,
+	namespace string,
+	opts metav1.ListOptions) (watch.Interface,
+	error,
+) {
 	var ri dynamic.ResourceInterface
 	if namespace != "" {
 		ri = c.dynamicClient.Resource(gvr).Namespace(namespace)
@@ -624,7 +675,12 @@ func (c *Client) CheckPermission(ctx context.Context, verb, resource, namespace 
 // The production constructor needs a reachable cluster and a kubeconfig on
 // disk, which makes the menu verbs (cordon, drain, scale, rollout history)
 // untestable. Passing fakes here exercises the same code paths the bot uses.
-func NewClientForTest(clientset kubernetes.Interface, dynamicClient dynamic.Interface, logger *zap.Logger, dryRun bool) *Client {
+func NewClientForTest(
+	clientset kubernetes.Interface,
+	dynamicClient dynamic.Interface,
+	logger *zap.Logger,
+	dryRun bool,
+) *Client {
 	return &Client{
 		clientset:     clientset,
 		dynamicClient: dynamicClient,

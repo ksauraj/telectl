@@ -1,5 +1,5 @@
-# k8s-telegram-bot Configuration
-# Copy this file to ~/.config/k8s-telegram-bot.yaml or ~/.k8s-telegram-bot.yaml
+# telectl Configuration
+# Copy this file to ~/.config/telectl.yaml or ~/.telectl.yaml
 # Or set values via environment variables (prefix: K8SBOT_)
 
 telegram:
