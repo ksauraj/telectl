@@ -65,11 +65,11 @@ const (
 // fixed-width tables.
 func StatusEmoji(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "running":
+	case "running", "active", "ready", "bound", "available":
 		return emojiHealthy
 	case "succeeded", "completed":
 		return emojiDone
-	case "pending":
+	case "pending", "creating", "containercreating", "progressing":
 		return emojiWaiting
 	case "failed", "crashloopbackoff", "error":
 		return emojiBroken
@@ -179,6 +179,70 @@ func FormatResourceList(resources []k8s.ResourceInfo, format string, wide bool) 
 	}
 }
 
+// maxNameWidth caps the NAME column so a long generated pod name cannot push
+// every other column off the right edge of a phone screen.
+const maxNameWidth = 42
+
+// columnWidths returns the rendered width of each column: the widest cell,
+// measured in display columns rather than bytes so emoji and CJK line up.
+func columnWidths(cols []tableColumn, headers []string, rows [][]string) []int {
+	widths := make([]int, len(cols))
+	for i, h := range headers {
+		widths[i] = displayWidth(h)
+	}
+	for _, row := range rows {
+		for i, cell := range row {
+			if i >= len(widths) {
+				continue
+			}
+			if w := displayWidth(cell); w > widths[i] {
+				widths[i] = w
+			}
+		}
+	}
+	for i, c := range cols {
+		if c.Header == "NAME" && widths[i] > maxNameWidth {
+			widths[i] = maxNameWidth
+		}
+	}
+	return widths
+}
+
+// truncateToWidth shortens s to at most width display columns, ending with an
+// ellipsis. It cuts on rune boundaries: slicing by byte would split a
+// multi-byte character and emit invalid UTF-8.
+func truncateToWidth(s string, width int) string {
+	if displayWidth(s) <= width {
+		return s
+	}
+	var b strings.Builder
+	used := 0
+	for _, r := range s {
+		w := runeWidth(r)
+		if used+w > width-1 { // leave a column for the ellipsis
+			break
+		}
+		b.WriteRune(r)
+		used += w
+	}
+	return b.String() + "…"
+}
+
+// writeRow writes one padded row, two spaces between columns.
+func writeRow(sb *strings.Builder, cells []string, widths []int) {
+	for j, cell := range cells {
+		if j > 0 {
+			sb.WriteString("  ")
+		}
+		if j < len(widths) {
+			sb.WriteString(padRight(cell, widths[j]))
+		} else {
+			sb.WriteString(cell)
+		}
+	}
+	sb.WriteString("\n")
+}
+
 // formatResourceListTable renders resources as a MarkdownV2 code-block table
 // with resource-specific columns and status emojis.
 func formatResourceListTable(resources []k8s.ResourceInfo, wide bool) string {
@@ -192,72 +256,49 @@ func formatResourceListTable(resources []k8s.ResourceInfo, wide bool) string {
 	}
 	cols := columnsForKind(kind, wide)
 
-	// Build rows with display values (pre-escaping).
 	headers := make([]string, len(cols))
 	for i, c := range cols {
 		headers[i] = c.Header
 	}
 	rows := make([][]string, 0, len(resources))
-	for _, r := range resources {
-		rows = append(rows, rowForKind(cols, &r))
+	for i := range resources {
+		rows = append(rows, rowForKind(cols, &resources[i]))
 	}
 
-	// Compute column widths.
-	widths := make([]int, len(cols))
-	for i, h := range headers {
-		widths[i] = displayWidth(h)
-	}
-	for _, row := range rows {
-		for i, cell := range row {
-			if w := displayWidth(cell); w > widths[i] {
-				widths[i] = w
-			}
-		}
-	}
-	// Cap very wide NAME columns so the table fits in Telegram.
-	maxNameWidth := 42
+	widths := columnWidths(cols, headers, rows)
+
+	// Truncate over-long cells in the NAME column, if there is one. Keyed off
+	// the column's identity, not its width: a different first column that
+	// happened to be exactly maxNameWidth wide used to get truncated too.
 	for i, c := range cols {
-		if c.Header == "NAME" && widths[i] > maxNameWidth {
-			widths[i] = maxNameWidth
+		if c.Header != "NAME" {
+			continue
+		}
+		for _, row := range rows {
+			if i < len(row) {
+				row[i] = truncateToWidth(row[i], widths[i])
+			}
 		}
 	}
 
 	var sb strings.Builder
-	// Title line (MarkdownV2 — but this goes inside a code block so no escaping).
+	// Title line. This goes inside a code block, so no escaping is needed.
 	sb.WriteString(fmt.Sprintf("%s %d item(s)\n", kind, len(resources)))
 
-	// Header row
-	sb.WriteString(padRight(headers[0], widths[0]))
-	for j := 1; j < len(headers); j++ {
-		sb.WriteString("  ")
-		sb.WriteString(padRight(headers[j], widths[j]))
-	}
-	sb.WriteString("\n")
+	writeRow(&sb, headers, widths)
 
-	// Separator row
-	sb.WriteString(strings.Repeat("─", widths[0]))
-	for j := 1; j < len(headers); j++ {
-		sb.WriteString("  ")
-		sb.WriteString(strings.Repeat("─", widths[j]))
+	separators := make([]string, len(widths))
+	for i, w := range widths {
+		separators[i] = strings.Repeat("─", w)
 	}
-	sb.WriteString("\n")
+	writeRow(&sb, separators, widths)
 
-	// Data rows
 	for _, row := range rows {
-		// Truncate NAME cell if too wide.
-		if len(row[0]) > maxNameWidth && widths[0] == maxNameWidth {
-			row[0] = row[0][:maxNameWidth-1] + "…"
-		}
-		sb.WriteString(padRight(row[0], widths[0]))
-		for j := 1; j < len(row); j++ {
-			sb.WriteString("  ")
-			sb.WriteString(padRight(row[j], widths[j]))
-		}
-		sb.WriteString("\n")
+		writeRow(&sb, row, widths)
 	}
 
-	// Wrap in a MarkdownV2 code block. Inside ``` no escaping is needed,
-	// which is why we kept the raw text above.
+	// Wrap in a MarkdownV2 code block. Inside ``` no escaping is needed, which
+	// is why the text above is kept raw.
 	return "```\n" + sb.String() + "```"
 }
 
@@ -398,31 +439,42 @@ func rowForKind(cols []tableColumn, r *k8s.ResourceInfo) []string {
 // displayWidth returns the number of visible columns of s, treating a UTF-8
 // rune (including emoji and CJK) as width 2. This is a conservative estimate
 // that works well enough for fixed-width code blocks in Telegram.
+// wideRuneRanges are the Unicode ranges rendered two columns wide in the
+// monospace fonts Telegram uses. Kept as data so the ranges can be checked
+// against a Unicode chart, rather than read out of a switch.
+//
+// This is a deliberate approximation of UAX #11 East Asian Width: it covers the
+// ranges that actually turn up in Kubernetes output — status emoji, and CJK or
+// Hangul in resource names and labels.
+var wideRuneRanges = [...]struct{ lo, hi rune }{
+	{0x1F300, 0x1FAFF}, // emoji and pictographs
+	{0x1100, 0x115F},   // Hangul Jamo
+	{0x2E80, 0xA4CF},   // CJK radicals through Yi
+	{0xAC00, 0xD7A3},   // Hangul syllables
+	{0xF900, 0xFAFF},   // CJK compatibility ideographs
+	{0xFE30, 0xFE4F},   // CJK compatibility forms
+	{0xFF00, 0xFF60},   // fullwidth forms
+	{0xFFE0, 0xFFE6},   // fullwidth signs
+}
+
+// displayWidth returns the number of terminal columns s occupies, counting
+// wide runes as two. Column alignment in the code-block tables depends on it:
+// counting an emoji as one column shifts every following cell left by one.
 func displayWidth(s string) int {
 	w := 0
 	for _, r := range s {
-		switch {
-		case r >= 0x1F300 && r <= 0x1FAFF: // emoji symbols
-			w += 2
-		case r >= 0x1100 && r <= 0x115F: // Hangul Jamo
-			w += 2
-		case r >= 0x2E80 && r <= 0xA4CF: // CJK radicals
-			w += 2
-		case r >= 0xAC00 && r <= 0xD7A3: // Hangul syllables
-			w += 2
-		case r >= 0xF900 && r <= 0xFAFF: // CJK compat ideographs
-			w += 2
-		case r >= 0xFE30 && r <= 0xFE4F: // CJK compat forms
-			w += 2
-		case r >= 0xFF00 && r <= 0xFF60: // fullwidth forms
-			w += 2
-		case r >= 0xFFE0 && r <= 0xFFE6: // fullwidth signs
-			w += 2
-		default:
-			w += 1
-		}
+		w += runeWidth(r)
 	}
 	return w
+}
+
+func runeWidth(r rune) int {
+	for _, rng := range wideRuneRanges {
+		if r >= rng.lo && r <= rng.hi {
+			return 2
+		}
+	}
+	return 1
 }
 
 // padRight pads s with spaces to reach width columns (respects displayWidth).
@@ -846,10 +898,16 @@ func TruncateString(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s
 	}
-	if maxLen <= 3 {
-		return s[:maxLen]
+	// Rune-aware: slicing by byte can split a multi-byte character and produce
+	// invalid UTF-8, which makes Telegram reject the whole message.
+	runes := []rune(s)
+	if len(runes) <= maxLen {
+		return s
 	}
-	return s[:maxLen-3] + "..."
+	if maxLen <= 3 {
+		return string(runes[:maxLen])
+	}
+	return string(runes[:maxLen-3]) + "..."
 }
 
 // FormatPodLogs formats pod logs for display.

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -110,40 +111,10 @@ func InitConfig(configFile string) error {
 	_ = viper.BindEnv("telegram.allowed_user_ids", "ALLOWED_USER_IDS")
 	_ = viper.BindEnv("telegram.admin_user_ids", "ADMIN_USER_IDS")
 
-	// Manually parse comma-separated env vars into []int64 since
-	// viper doesn't auto-split comma-separated strings into []int64
-	if val := os.Getenv("ALLOWED_USER_IDS"); val != "" {
-		parts := strings.Split(val, ",")
-		ids := make([]int64, 0, len(parts))
-		for _, p := range parts {
-			p = strings.TrimSpace(p)
-			if p == "" {
-				continue
-			}
-			if id, err := strconv.ParseInt(p, 10, 64); err == nil {
-				ids = append(ids, id)
-			}
-		}
-		if len(ids) > 0 {
-			viper.Set("telegram.allowed_user_ids", ids)
-		}
-	}
-	if val := os.Getenv("ADMIN_USER_IDS"); val != "" {
-		parts := strings.Split(val, ",")
-		ids := make([]int64, 0, len(parts))
-		for _, p := range parts {
-			p = strings.TrimSpace(p)
-			if p == "" {
-				continue
-			}
-			if id, err := strconv.ParseInt(p, 10, 64); err == nil {
-				ids = append(ids, id)
-			}
-		}
-		if len(ids) > 0 {
-			viper.Set("telegram.admin_user_ids", ids)
-		}
-	}
+	// Viper does not split a comma-separated env var into []int64, so the two
+	// user-ID lists are parsed here.
+	applyUserIDEnv("ALLOWED_USER_IDS", "telegram.allowed_user_ids")
+	applyUserIDEnv("ADMIN_USER_IDS", "telegram.admin_user_ids")
 
 	setDefaults()
 
@@ -152,36 +123,11 @@ func InitConfig(configFile string) error {
 	// an accidental kubeconfig parse) is reported with the file path so the
 	// user can identify what was read.
 	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// Config file not found is OK, we'll use defaults + env vars
-		} else {
-			usedFile := viper.ConfigFileUsed()
-			// detect the most common misconfiguration: viper accidentally
-			// picked up a kubeconfig file (or the compiled binary itself)
-			// as the bot config.
-			if usedFile != "" {
-				if fi, statErr := os.Stat(usedFile); statErr == nil && fi.Size() > 0 {
-					// Refuse a file with no recognized config extension —
-					// this catches the case where the compiled binary
-					// (telectl, no extension) is found as config.
-					ext := strings.ToLower(filepath.Ext(usedFile))
-					validExts := map[string]bool{
-						".yaml": true, ".yml": true, ".json": true,
-						".toml": true, ".ini": true, ".env": true,
-						".properties": true, ".props": true, ".prop": true,
-						".hcl": true, ".tfvars": true, ".dotenv": true,
-					}
-					if ext == "" || !validExts[ext] {
-						return fmt.Errorf("refusing to use %q as bot config: not a recognized config file (ext=%q). Pass --config /path/to/telectl.yaml explicitly", usedFile, ext)
-					}
-					raw, readErr := os.ReadFile(usedFile)
-					if readErr == nil && (strings.Contains(string(raw), "apiVersion: v1") || strings.Contains(string(raw), "certificate-authority-data")) && !strings.Contains(string(raw), "telegram") {
-						return fmt.Errorf("refusing to use %q as bot config: it looks like a kubeconfig file. Pass --config /path/to/telectl.yaml explicitly", usedFile)
-					}
-				}
-			}
-			return fmt.Errorf("failed to read config %q: %w", usedFile, err)
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) {
+			return describeConfigReadError(viper.ConfigFileUsed(), err)
 		}
+		// A missing config file is fine: defaults plus environment are enough.
 	}
 
 	cfg = &Config{}
@@ -190,6 +136,91 @@ func InitConfig(configFile string) error {
 	}
 
 	return nil
+}
+
+// applyUserIDEnv parses a comma-separated list of Telegram user IDs from env
+// and stores it under key.
+//
+// A malformed entry is skipped rather than failing startup, because this path
+// also runs for the admin list, which is advisory. The --allowed-users flag
+// takes the stricter line and rejects a bad ID outright: that list decides who
+// can operate the cluster, and silently dropping an entry there would quietly
+// change the answer.
+func applyUserIDEnv(envVar, key string) {
+	raw := os.Getenv(envVar)
+	if raw == "" {
+		return
+	}
+
+	parts := strings.Split(raw, ",")
+	ids := make([]int64, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if id, err := strconv.ParseInt(part, 10, 64); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) > 0 {
+		viper.Set(key, ids)
+	}
+}
+
+// configExtensions are the file extensions viper can actually parse. A file
+// without one is not a config file, whatever viper thinks it found.
+var configExtensions = map[string]bool{
+	".yaml": true, ".yml": true, ".json": true,
+	".toml": true, ".ini": true, ".env": true,
+	".properties": true, ".props": true, ".prop": true,
+	".hcl": true, ".tfvars": true, ".dotenv": true,
+}
+
+// describeConfigReadError turns a viper read failure into a message that names
+// the file and, where possible, says what the file actually appears to be.
+//
+// The two cases worth calling out by name are the ones operators hit: viper
+// picking up ~/.kube/config (which fails with an opaque "control characters are
+// not allowed" from the embedded cert data), and viper picking up the compiled
+// telectl binary, which shares the config base name and has no extension.
+func describeConfigReadError(usedFile string, err error) error {
+	if usedFile == "" {
+		return fmt.Errorf("failed to read config: %w", err)
+	}
+
+	fi, statErr := os.Stat(usedFile)
+	if statErr != nil || fi.Size() == 0 {
+		return fmt.Errorf("failed to read config %q: %w", usedFile, err)
+	}
+
+	ext := strings.ToLower(filepath.Ext(usedFile))
+	if !configExtensions[ext] {
+		return fmt.Errorf("refusing to use %q as bot config: not a recognized "+
+			"config file (ext=%q). Pass --config /path/to/telectl.yaml explicitly",
+			usedFile, ext)
+	}
+
+	if isKubeconfig(usedFile) {
+		return fmt.Errorf("refusing to use %q as bot config: it looks like a "+
+			"kubeconfig file. Pass --config /path/to/telectl.yaml explicitly",
+			usedFile)
+	}
+
+	return fmt.Errorf("failed to read config %q: %w", usedFile, err)
+}
+
+// isKubeconfig reports whether a file looks like a kubeconfig rather than a
+// telectl config: it carries kubeconfig markers and no telegram section.
+func isKubeconfig(path string) bool {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	body := string(raw)
+	hasKubeMarkers := strings.Contains(body, "apiVersion: v1") ||
+		strings.Contains(body, "certificate-authority-data")
+	return hasKubeMarkers && !strings.Contains(body, "telegram")
 }
 
 func setDefaults() {

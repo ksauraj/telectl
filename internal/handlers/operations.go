@@ -91,7 +91,9 @@ func (h *ScaleHandler) Handle(ctx context.Context, msg *tg.Message, args []strin
 	client := h.getK8sClient()
 
 	if h.getConfig().Kubernetes.DryRun {
-		h.sendResponse(msg.Chat.ID, fmt.Sprintf("📈 [DRY RUN] Would scale deployment %s/%s to %d replicas", namespace, name, replicas))
+		h.sendResponse(msg.Chat.ID, fmt.Sprintf(
+			"📈 [DRY RUN] Would scale deployment %s/%s to %d replicas",
+			namespace, name, replicas))
 		return nil
 	}
 

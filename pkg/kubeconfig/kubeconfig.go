@@ -38,9 +38,10 @@ type AuthInfo struct {
 
 // ClusterInfo represents cluster information.
 type ClusterInfo struct {
-	Name                     string `json:"name" yaml:"name"`
-	Server                   string `json:"server" yaml:"server"`
-	CertificateAuthority     string `json:"certificate_authority,omitempty" yaml:"certificate_authority,omitempty"`
+	Name                 string `json:"name" yaml:"name"`
+	Server               string `json:"server" yaml:"server"`
+	CertificateAuthority string `json:"certificate_authority,omitempty" yaml:"certificate_authority,omitempty"`
+	//nolint:lll // struct tags cannot be wrapped
 	CertificateAuthorityData string `json:"certificate_authority_data,omitempty" yaml:"certificate_authority_data,omitempty"`
 	InsecureSkipTLSVerify    bool   `json:"insecure_skip_tls_verify" yaml:"insecure_skip_tls_verify"`
 }

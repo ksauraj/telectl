@@ -58,58 +58,93 @@ func (h *BaseHandler) sendResponse(chatID int64, text string) {
 	h.bot.SendLongMessage(chatID, text)
 }
 
-// Helper to parse common flags.
-func parseFlags(args []string) (namespace, output, selector, fieldSelector string, remaining []string) {
-	namespace = ""
-	output = ""
-	selector = ""
-	fieldSelector = ""
-	remaining = []string{}
+// valueFlag describes a flag that takes a value, in all the spellings the
+// command parsers accept: "-n prod", "-n=prod", "--namespace prod" and
+// "--namespace=prod".
+type valueFlag struct {
+	short string // "-n"; empty if the flag has no short form
+	long  string // "--namespace"
+	set   func(*parsedFlags, string)
+}
 
-	for i := 0; i < len(args); i++ {
+// parsedFlags holds the flags common to the resource commands.
+type parsedFlags struct {
+	namespace     string
+	output        string
+	selector      string
+	fieldSelector string
+	remaining     []string
+}
+
+// commonValueFlags is the flag table shared by /get and friends. Each entry
+// used to be four near-identical switch cases; that repetition is what made the
+// parser complex, not the logic.
+var commonValueFlags = []valueFlag{
+	{short: flagNamespaceShort, long: flagNamespaceLong,
+		set: func(f *parsedFlags, v string) { f.namespace = v }},
+	{short: "-o", long: "--output",
+		set: func(f *parsedFlags, v string) { f.output = v }},
+	{short: "-l", long: "--selector",
+		set: func(f *parsedFlags, v string) { f.selector = v }},
+	{long: "--field-selector",
+		set: func(f *parsedFlags, v string) { f.fieldSelector = v }},
+}
+
+// match reports whether arg is this flag, returning its value and how many
+// arguments were consumed.
+//
+// A separated flag at the very end of args ("... -n") consumes only itself and
+// yields no value, so a half-typed command cannot read past the slice.
+func (vf valueFlag) match(arg string, rest []string) (value string, consumed int, ok bool) {
+	switch {
+	case arg == vf.long, vf.short != "" && arg == vf.short:
+		if len(rest) == 0 {
+			return "", 1, true // dangling flag: nothing to take
+		}
+		return rest[0], 2, true
+	case strings.HasPrefix(arg, vf.long+"="):
+		return strings.TrimPrefix(arg, vf.long+"="), 1, true
+	case vf.short != "" && strings.HasPrefix(arg, vf.short+"="):
+		return strings.TrimPrefix(arg, vf.short+"="), 1, true
+	}
+	return "", 0, false
+}
+
+// parseFlags extracts the common flags, returning anything unrecognised as
+// positional arguments.
+func parseFlags(args []string) (namespace, output, selector, fieldSelector string, remaining []string) {
+	f := parsedFlags{remaining: []string{}}
+
+	for i := 0; i < len(args); {
 		arg := args[i]
-		switch {
-		case arg == flagNamespaceShort || arg == flagNamespaceLong:
-			if i+1 < len(args) {
-				namespace = args[i+1]
-				i++
+
+		// -A/--all-namespaces clears the namespace rather than setting one.
+		if arg == "--all-namespaces" || arg == "-A" {
+			f.namespace = ""
+			i++
+			continue
+		}
+
+		matched := false
+		for _, vf := range commonValueFlags {
+			value, consumed, ok := vf.match(arg, args[i+1:])
+			if !ok {
+				continue
 			}
-		case strings.HasPrefix(arg, "-n="):
-			namespace = strings.TrimPrefix(arg, "-n=")
-		case strings.HasPrefix(arg, "--namespace="):
-			namespace = strings.TrimPrefix(arg, "--namespace=")
-		case arg == "-o" || arg == "--output":
-			if i+1 < len(args) {
-				output = args[i+1]
-				i++
+			if consumed == 2 || value != "" {
+				vf.set(&f, value)
 			}
-		case strings.HasPrefix(arg, "-o="):
-			output = strings.TrimPrefix(arg, "-o=")
-		case strings.HasPrefix(arg, "--output="):
-			output = strings.TrimPrefix(arg, "--output=")
-		case arg == "-l" || arg == "--selector":
-			if i+1 < len(args) {
-				selector = args[i+1]
-				i++
-			}
-		case strings.HasPrefix(arg, "-l="):
-			selector = strings.TrimPrefix(arg, "-l=")
-		case strings.HasPrefix(arg, "--selector="):
-			selector = strings.TrimPrefix(arg, "--selector=")
-		case arg == "--field-selector":
-			if i+1 < len(args) {
-				fieldSelector = args[i+1]
-				i++
-			}
-		case strings.HasPrefix(arg, "--field-selector="):
-			fieldSelector = strings.TrimPrefix(arg, "--field-selector=")
-		case arg == "--all-namespaces" || arg == "-A":
-			namespace = ""
-		default:
-			remaining = append(remaining, arg)
+			i += consumed
+			matched = true
+			break
+		}
+		if !matched {
+			f.remaining = append(f.remaining, arg)
+			i++
 		}
 	}
-	return namespace, output, selector, fieldSelector, remaining
+
+	return f.namespace, f.output, f.selector, f.fieldSelector, f.remaining
 }
 
 func (h *BaseHandler) getK8sClient() *k8s.Client {

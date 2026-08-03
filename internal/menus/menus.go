@@ -240,7 +240,8 @@ func (mb *MenuBuilder) GetResourceListInlineKeyboard(
 	totalPages := (len(resources) + pageSize - 1) / pageSize
 
 	if page > 0 {
-		paginationRow = append(paginationRow, mb.btn("⬅️ Prev", "menu:resource:page:"+resourceType+":"+namespace+":"+strconv.Itoa(page-1)))
+		paginationRow = append(paginationRow, mb.btn("⬅️ Prev",
+			"menu:resource:page:"+resourceType+":"+namespace+":"+strconv.Itoa(page-1)))
 	}
 
 	paginationRow = append(paginationRow, mb.btn(
@@ -249,7 +250,8 @@ func (mb *MenuBuilder) GetResourceListInlineKeyboard(
 	))
 
 	if page+1 < totalPages {
-		paginationRow = append(paginationRow, mb.btn("Next ➡️", "menu:resource:page:"+resourceType+":"+namespace+":"+strconv.Itoa(page+1)))
+		paginationRow = append(paginationRow, mb.btn("Next ➡️",
+			"menu:resource:page:"+resourceType+":"+namespace+":"+strconv.Itoa(page+1)))
 	}
 
 	if len(paginationRow) > 1 {
@@ -727,6 +729,13 @@ func (mb *MenuBuilder) GetLogOptionsKeyboard(namespace, name, container string) 
 // Callback Data Parsing
 // ============================================================================
 
+// Callback verbs that appear in more than one place, exported so the bot's
+// dispatcher compares against the same values this package emits.
+const (
+	VerbPage = "page"
+	VerbHome = "home"
+)
+
 // CallbackAction represents a parsed callback action.
 type CallbackAction struct {
 	Type         string
@@ -739,114 +748,118 @@ type CallbackAction struct {
 	Extra        string
 }
 
-// ParseCallbackData parses callback data from inline keyboard buttons.
-func ParseCallbackData(data string) *CallbackAction {
-	// Format: "menu:type:action:resource:namespace:name:extra"
-	parts := strings.Split(data, ":")
-	if len(parts) < 2 {
-		return nil
-	}
-
-	if parts[0] != "menu" {
-		return nil
-	}
-
-	action := &CallbackAction{
-		Type: parts[1],
-	}
-
-	switch parts[1] {
-	case "resource":
-		if len(parts) >= 3 {
-			action.Action = parts[2] // view, page, list, refresh, filter, types
-		}
-		if len(parts) >= 4 {
-			action.ResourceType = parts[3]
-		}
-		if len(parts) >= 5 {
-			action.Namespace = parts[4]
-		}
-		if len(parts) >= 6 {
-			// For "page" action, the trailing field is the page number (Extra).
-			// For "view" action, it's the resource name.
-			if action.Action == "page" {
-				action.Extra = parts[5]
+// callbackFields lists which CallbackAction field each colon-separated position
+// maps to, per callback type. Index 0 is the field after the type, i.e. parts[2].
+//
+// The wire format is positional — "menu:<type>:<f0>:<f1>:…" — and every bug in
+// this area has been a field landing one slot off: a button that omitted its
+// resource-type field shifted Name into Namespace and left Name empty, and the
+// dispatcher's empty-name guard then dropped the tap in silence. Declaring the
+// layout as data makes the contract inspectable instead of implied by the order
+// of a chain of length checks.
+var callbackFields = map[string][]func(*CallbackAction, string){
+	"resource": {
+		func(a *CallbackAction, v string) { a.Action = v }, // view, page, list, refresh, filter, types
+		func(a *CallbackAction, v string) { a.ResourceType = v },
+		func(a *CallbackAction, v string) { a.Namespace = v },
+		// "page" carries a page number here; every other verb carries a name.
+		func(a *CallbackAction, v string) {
+			if a.Action == VerbPage {
+				a.Extra = v
 			} else {
-				action.Name = parts[5]
+				a.Name = v
 			}
-		}
-		if len(parts) >= 7 {
-			action.Extra = parts[6]
-		}
+		},
+		func(a *CallbackAction, v string) { a.Extra = v },
+	},
+	"action": {
+		func(a *CallbackAction, v string) { a.Action = v }, // describe, logs, scale, cordon, …
+		func(a *CallbackAction, v string) { a.ResourceType = v },
+		func(a *CallbackAction, v string) { a.Namespace = v },
+		func(a *CallbackAction, v string) { a.Name = v },
+		// Usually a container name. For verbs whose trailing argument is a
+		// value rather than a container, it is routed to Extra below.
+		func(a *CallbackAction, v string) { a.Container = v },
+		func(a *CallbackAction, v string) { a.Extra = v },
+	},
+	"ctx": {
+		func(a *CallbackAction, v string) { a.Action = v }, // switch, refresh
+		func(a *CallbackAction, v string) { a.Name = v },
+	},
+	"monitor": {
+		func(a *CallbackAction, v string) { a.Action = v }, // top, events, watch
+		func(a *CallbackAction, v string) { a.ResourceType = v },
+	},
+	"ops": {
+		func(a *CallbackAction, v string) { a.Action = v }, // restart, scale, delete, edit
+	},
+	"settings": {
+		func(a *CallbackAction, v string) { a.Action = v }, // namespace, context, theme, …
+		// Absorbs the tail: a namespace name may contain colons.
+		func(a *CallbackAction, v string) { a.Name = v },
+	},
+	"ns": {
+		func(a *CallbackAction, v string) { a.Action = v }, // pick, set, page
+		// Absorbs the tail: a namespace name may contain colons. Empty means
+		// "all namespaces".
+		func(a *CallbackAction, v string) { a.Name = v },
+	},
 
-	case "action":
-		if len(parts) >= 3 {
-			action.Action = parts[2] // describe, delete, logs, exec, portforward, restart, scale, etc.
-		}
-		if len(parts) >= 4 {
-			action.ResourceType = parts[3]
-		}
-		if len(parts) >= 5 {
-			action.Namespace = parts[4]
-		}
-		if len(parts) >= 6 {
-			action.Name = parts[5]
-		}
-		if len(parts) >= 7 {
-			action.Container = parts[6]
-		}
-		if len(parts) >= 8 {
-			action.Extra = parts[7]
-		}
-		// Verbs whose trailing argument is a value rather than a container name
-		// carry it in the same slot, but the dispatcher reads it from Extra.
-		// ParseCallbackData is the only place that knows which verb is which, so
-		// the routing happens here.
-		if action.Action == "scaleset" && len(parts) >= 7 {
-			action.Extra = parts[6]
-		}
+	// Types with no payload. Present so an unknown type is distinguishable
+	// from a known one that takes no fields.
+	"main": {},
+	"noop": {},
+	"help": {},
+}
 
-	case "ctx":
-		if len(parts) >= 3 {
-			action.Action = parts[2] // switch, refresh
-		}
-		if len(parts) >= 4 {
-			action.Name = parts[3]
-		}
+// tailJoinTypes are the callback types whose final field is a name that may
+// itself contain colons — a namespace or context name. For these the remainder
+// of the data is joined back together rather than truncated at the first colon.
+var tailJoinTypes = map[string]bool{
+	"settings": true,
+	"ns":       true,
+}
 
-	case "monitor":
-		if len(parts) >= 3 {
-			action.Action = parts[2] // top, events, watch
-		}
-		if len(parts) >= 4 {
-			action.ResourceType = parts[3]
-		}
+// valueInContainerSlot are "action" verbs whose first trailing argument is a
+// value, not a container name. The dispatcher reads it from Extra.
+var valueInContainerSlot = map[string]bool{
+	"scaleset": true,
+}
 
-	case "ops":
-		if len(parts) >= 3 {
-			action.Action = parts[2] // restart, scale, delete, edit
-		}
+// ParseCallbackData decodes the callback data carried by an inline button.
+//
+// Returns nil for anything that is not ours, so a stray callback from another
+// source cannot be mistaken for a menu action.
+func ParseCallbackData(data string) *CallbackAction {
+	parts := strings.Split(data, ":")
+	if len(parts) < 2 || parts[0] != "menu" {
+		return nil
+	}
 
-	case "settings":
-		if len(parts) >= 3 {
-			action.Action = parts[2] // namespace, context, theme, notifications
-		}
-		// "menu:settings:setns:<name>" carries the chosen namespace. An empty
-		// trailing field means "all namespaces".
-		if len(parts) >= 4 {
-			action.Name = strings.Join(parts[3:], ":")
-		}
+	action := &CallbackAction{Type: parts[1]}
+	setters, known := callbackFields[action.Type]
+	if !known {
+		// An unrecognised type still parses to its type alone; the dispatcher
+		// logs and ignores it.
+		return action
+	}
 
-	case "ns":
-		if len(parts) >= 3 {
-			action.Action = parts[2] // pick, set, page
+	fields := parts[2:]
+	for i, set := range setters {
+		if i >= len(fields) {
+			break
 		}
-		if len(parts) >= 4 {
-			action.Name = strings.Join(parts[3:], ":")
+		value := fields[i]
+		// The last declared field of a tail-join type absorbs the remainder.
+		if i == len(setters)-1 && tailJoinTypes[action.Type] {
+			value = strings.Join(fields[i:], ":")
 		}
+		set(action, value)
+	}
 
-	case "main", "noop", "help":
-		// No additional data needed
+	if action.Type == "action" && valueInContainerSlot[action.Action] {
+		action.Extra = action.Container
+		action.Container = ""
 	}
 
 	return action

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/ksauraj/telectl/internal/k8s"
 	"github.com/stretchr/testify/assert"
@@ -283,4 +284,109 @@ func TestColumnsForKindUnknownFallsBack(t *testing.T) {
 		t.Fatal("unknown kind produced no columns")
 	}
 	assert.Equal(t, "NAME", cols[0].Header)
+}
+
+// Column alignment in the code-block tables depends on displayWidth: counting a
+// status emoji as one column shifts every following cell left by one.
+func TestDisplayWidth(t *testing.T) {
+	cases := map[string]int{
+		"":       0,
+		"abc":    3,
+		"🟢":      2, // emoji: two columns
+		"🟢 pod":  6, // 2 + space + 3
+		"日本":     4, // CJK: two columns each
+		"한글":     4, // Hangul syllables
+		"a日b":    4,
+		"my-pod": 6,
+	}
+	for in, want := range cases {
+		if got := displayWidth(in); got != want {
+			t.Errorf("displayWidth(%q) = %d, want %d", in, got, want)
+		}
+	}
+}
+
+// padRight must pad to the visual width, not the byte or rune count, or a
+// column containing an emoji ends up one character short.
+func TestPadRightUsesDisplayWidth(t *testing.T) {
+	got := padRight("🟢", 4)
+	if displayWidth(got) != 4 {
+		t.Errorf("padRight(%q, 4) has display width %d, want 4", got, displayWidth(got))
+	}
+	// Already at or over the width: returned unchanged.
+	if got := padRight("abcd", 4); got != "abcd" {
+		t.Errorf("padRight at exact width = %q", got)
+	}
+	if got := padRight("abcdef", 4); got != "abcdef" {
+		t.Errorf("padRight over width should not truncate, got %q", got)
+	}
+}
+
+// The old NAME truncation sliced by byte (row[0][:maxNameWidth-1]), which cuts
+// a multi-byte rune in half and emits invalid UTF-8 — Telegram rejects the
+// whole message when that happens. Truncation must cut on rune boundaries.
+func TestTruncateToWidthKeepsValidUTF8(t *testing.T) {
+	cases := []struct {
+		name  string
+		in    string
+		width int
+	}{
+		{"ascii", strings.Repeat("a", 60), 42},
+		{"cjk", strings.Repeat("日", 60), 42},
+		{"emoji", strings.Repeat("🟢", 60), 42},
+		{"mixed", strings.Repeat("a日🟢", 30), 42},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := truncateToWidth(tc.in, tc.width)
+			if !utf8.ValidString(got) {
+				t.Errorf("truncation produced invalid UTF-8: %q", got)
+			}
+			if w := displayWidth(got); w > tc.width {
+				t.Errorf("truncated to display width %d, limit was %d", w, tc.width)
+			}
+			if !strings.HasSuffix(got, "…") {
+				t.Errorf("truncated value should end with an ellipsis: %q", got)
+			}
+		})
+	}
+
+	// Short values are returned untouched, with no ellipsis.
+	if got := truncateToWidth("short", 42); got != "short" {
+		t.Errorf("short value was modified: %q", got)
+	}
+}
+
+// A long pod name must not push the other columns out of alignment.
+func TestFormatResourceListTableAlignsLongNames(t *testing.T) {
+	resources := []k8s.ResourceInfo{
+		{Name: strings.Repeat("very-long-pod-name", 5), Namespace: "default",
+			Kind: "Pod", Status: "Running", CreatedAt: metav1Time(time.Now())},
+		{Name: "short", Namespace: "default", Kind: "Pod", Status: "Running",
+			CreatedAt: metav1Time(time.Now())},
+	}
+	out := formatResourceListTable(resources, false)
+
+	if !utf8.ValidString(out) {
+		t.Fatal("table contains invalid UTF-8")
+	}
+
+	// Every data row must present the same visual width up to the last column.
+	lines := strings.Split(out, "\n")
+	widths := make([]int, 0, len(lines))
+	for _, line := range lines {
+		if line == "" || strings.HasPrefix(line, "```") || strings.Contains(line, "item(s)") {
+			continue
+		}
+		widths = append(widths, displayWidth(line))
+	}
+	if len(widths) < 3 { // header, separator, two rows
+		t.Fatalf("expected several table lines, got %d", len(widths))
+	}
+	for i, w := range widths[1:] {
+		if w != widths[0] {
+			t.Errorf("row %d has display width %d, header has %d — columns are misaligned",
+				i+1, w, widths[0])
+		}
+	}
 }

@@ -375,7 +375,8 @@ func (c *Client) unstructuredToResourceInfo(u *unstructured.Unstructured) Resour
 	status := "Unknown"
 	if s, found, _ := unstructured.NestedString(u.Object, "status", "phase"); found {
 		status = s
-	} else if conditions, found, _ := unstructured.NestedSlice(u.Object, "status", "conditions"); found && len(conditions) > 0 {
+	} else if conditions, found, _ := unstructured.NestedSlice(
+		u.Object, "status", "conditions"); found && len(conditions) > 0 {
 		if cond, ok := conditions[0].(map[string]interface{}); ok {
 			if t, ok := cond["type"].(string); ok {
 				status = t
@@ -507,8 +508,13 @@ func (c *Client) RestartDeployment(ctx context.Context, namespace, name string) 
 		return nil
 	}
 
-	patch := []byte(`{"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"` + time.Now().Format(time.RFC3339) + `"}}}}`)
-	_, err := c.clientset.AppsV1().Deployments(namespace).Patch(ctx, name, types.StrategicMergePatchType, patch, metav1.PatchOptions{})
+	// The same annotation kubectl rollout restart sets: changing the pod
+	// template is what makes the Deployment controller start a new rollout.
+	patch := []byte(`{"spec":{"template":{"metadata":{"annotations":` +
+		`{"kubectl.kubernetes.io/restartedAt":"` +
+		time.Now().Format(time.RFC3339) + `"}}}}`)
+	_, err := c.clientset.AppsV1().Deployments(namespace).Patch(
+		ctx, name, types.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	return err
 }
 

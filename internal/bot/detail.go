@@ -80,6 +80,80 @@ func (b *Bot) showResourceDetail(
 		&kb)
 }
 
+// detailReq carries the resolved parameters of one detail-pane verb, so each
+// handler takes a single argument instead of repeating the same six.
+type detailReq struct {
+	chatID    int64
+	messageID int
+	kind      string // canonical plural, e.g. "pods"
+	ns        string
+	name      string
+	container string
+	extra     string
+	session   *types.UserSession
+}
+
+// detailVerbs maps each detail-pane verb to its handler.
+//
+// A map rather than a switch so the verb set is enumerable: a test asserts that
+// every button the keyboards render has an entry here, which is what the
+// "⚠️ That action is not available yet" replies used to be — a button with no
+// handler, indistinguishable from a bug until someone tapped it.
+var detailVerbs = map[string]func(*Bot, context.Context, detailReq){
+	"describe": (*Bot).detailDescribe,
+	"labels":   func(b *Bot, ctx context.Context, r detailReq) { b.showLabels(ctx, r.chatID, r.kind, r.ns, r.name) },
+	"events":   func(b *Bot, ctx context.Context, r detailReq) { b.showObjectEvents(ctx, r.chatID, r.ns, r.name) },
+	"selector": func(b *Bot, ctx context.Context, r detailReq) { b.showSelector(ctx, r.chatID, r.kind, r.ns, r.name) },
+	"endpoints": func(b *Bot, ctx context.Context, r detailReq) {
+		b.showEndpoints(ctx, r.chatID, r.ns, r.name)
+	},
+	"pods":   (*Bot).detailWorkloadPods,
+	"rspods": (*Bot).detailWorkloadPods,
+	"nodepods": func(b *Bot, ctx context.Context, r detailReq) {
+		b.showNodePods(ctx, r.chatID, r.messageID, r.name, r.session)
+	},
+	"top":     func(b *Bot, ctx context.Context, r detailReq) { b.showNodeTop(ctx, r.chatID, r.name) },
+	"history": func(b *Bot, ctx context.Context, r detailReq) { b.showRolloutHistory(ctx, r.chatID, r.ns, r.name) },
+	"edit":    func(b *Bot, ctx context.Context, r detailReq) { b.showManifest(ctx, r.chatID, r.kind, r.ns, r.name) },
+	"cordon": func(b *Bot, ctx context.Context, r detailReq) {
+		b.setNodeSchedulable(ctx, r.chatID, r.messageID, r.name, false, r.session)
+	},
+	"uncordon": func(b *Bot, ctx context.Context, r detailReq) {
+		b.setNodeSchedulable(ctx, r.chatID, r.messageID, r.name, true, r.session)
+	},
+	"drain": func(b *Bot, ctx context.Context, r detailReq) {
+		b.confirmDrain(ctx, r.chatID, r.messageID, r.name)
+	},
+	"confirmdrain": func(b *Bot, ctx context.Context, r detailReq) {
+		b.drainNode(ctx, r.chatID, r.messageID, r.name, r.session)
+	},
+	"scale":   (*Bot).detailScaleOptions,
+	"rsscale": (*Bot).detailScaleOptions,
+	"scaleset": func(b *Bot, ctx context.Context, r detailReq) {
+		b.applyScale(ctx, r.chatID, r.messageID, r.kind, r.ns, r.name, r.extra, r.session)
+	},
+	"scalecustom": func(b *Bot, _ context.Context, r detailReq) {
+		b.promptCustomScale(r.chatID, r.kind, r.ns, r.name)
+	},
+	"logsopts": func(b *Bot, ctx context.Context, r detailReq) {
+		b.showLogOptions(ctx, r.chatID, r.messageID, r.ns, r.name)
+	},
+	cmdLogs: (*Bot).detailPodLogs,
+	"logsfollow": func(b *Bot, ctx context.Context, r detailReq) {
+		b.showFollowLogs(ctx, r.chatID, r.ns, r.name, r.container)
+	},
+	"logsprevious": func(b *Bot, ctx context.Context, r detailReq) {
+		b.showPreviousLogs(ctx, r.chatID, r.ns, r.name, r.container)
+	},
+	"nsresources": func(b *Bot, ctx context.Context, r detailReq) {
+		b.showNamespaceSummary(ctx, r.chatID, r.name)
+	},
+	"help": func(b *Bot, _ context.Context, r detailReq) {
+		b.SendRich(r.chatID, formatters.RichHelpForResource(r.kind),
+			"Actions for "+formatters.EscapeHTML(r.kind))
+	},
+}
+
 // dispatchDetailAction handles the verbs reachable from a detail pane. It
 // returns false for actions it does not own, so the caller can fall through to
 // the older handlers.
@@ -90,100 +164,51 @@ func (b *Bot) dispatchDetailAction(
 	action *menus.CallbackAction,
 	session *types.UserSession,
 ) bool {
-	kind := menus.CanonicalResource(action.ResourceType)
-	ns := action.Namespace
-	name := action.Name
-
-	switch action.Action {
-	case "describe":
-		if kind == "" || name == "" {
-			return true
-		}
-		args := []string{kind, name}
-		if ns != "" {
-			args = append(args, "-n", ns)
-		}
-		// Reuses the /describe handler so the menu and the typed command can
-		// never render the same object differently.
-		b.runCommand(ctx, "describe", args, chatID, session)
-
-	case "labels":
-		b.showLabels(ctx, chatID, kind, ns, name)
-
-	case "events":
-		b.showObjectEvents(ctx, chatID, ns, name)
-
-	case "selector":
-		b.showSelector(ctx, chatID, kind, ns, name)
-
-	case "endpoints":
-		b.showEndpoints(ctx, chatID, ns, name)
-
-	case "pods", "rspods":
-		b.showWorkloadPods(ctx, chatID, messageID, kind, ns, name, session)
-
-	case "nodepods":
-		b.showNodePods(ctx, chatID, messageID, name, session)
-
-	case "top":
-		b.showNodeTop(ctx, chatID, name)
-
-	case "history":
-		b.showRolloutHistory(ctx, chatID, ns, name)
-
-	case "edit":
-		b.showManifest(ctx, chatID, kind, ns, name)
-
-	case "cordon":
-		b.setNodeSchedulable(ctx, chatID, messageID, name, false, session)
-
-	case "uncordon":
-		b.setNodeSchedulable(ctx, chatID, messageID, name, true, session)
-
-	case "drain":
-		b.confirmDrain(ctx, chatID, messageID, name)
-
-	case "confirmdrain":
-		b.drainNode(ctx, chatID, messageID, name, session)
-
-	case "scale", "rsscale":
-		b.showScaleOptions(ctx, chatID, messageID, kind, ns, name)
-
-	case "scaleset":
-		b.applyScale(ctx, chatID, messageID, kind, ns, name, action.Extra, session)
-
-	case "scalecustom":
-		b.promptCustomScale(chatID, kind, ns, name)
-
-	case "logsopts":
-		b.showLogOptions(ctx, chatID, messageID, ns, name)
-
-	case cmdLogs:
-		// Per-container and tail-size buttons: Container is the container name,
-		// Extra the optional line count. Routed here rather than to the legacy
-		// path so the container selection is not silently dropped.
-		if name == "" {
-			return false
-		}
-		b.showPodLogs(ctx, chatID, ns, name, action.Container, action.Extra)
-
-	case "logsfollow":
-		b.showFollowLogs(ctx, chatID, ns, name, action.Container)
-
-	case "logsprevious":
-		b.showPreviousLogs(ctx, chatID, ns, name, action.Container)
-
-	case "nsresources":
-		b.showNamespaceSummary(ctx, chatID, name)
-
-	case "help":
-		b.SendRich(chatID, formatters.RichHelpForResource(kind),
-			"Actions for "+formatters.EscapeHTML(kind))
-
-	default:
+	handler, ok := detailVerbs[action.Action]
+	if !ok {
 		return false
 	}
+	handler(b, ctx, detailReq{
+		chatID:    chatID,
+		messageID: messageID,
+		kind:      menus.CanonicalResource(action.ResourceType),
+		ns:        action.Namespace,
+		name:      action.Name,
+		container: action.Container,
+		extra:     action.Extra,
+		session:   session,
+	})
 	return true
+}
+
+// detailDescribe reuses the /describe handler, so the menu and the typed
+// command can never render the same object differently.
+func (b *Bot) detailDescribe(ctx context.Context, r detailReq) {
+	if r.kind == "" || r.name == "" {
+		return
+	}
+	args := []string{r.kind, r.name}
+	if r.ns != "" {
+		args = append(args, "-n", r.ns)
+	}
+	b.runCommand(ctx, "describe", args, r.chatID, r.session)
+}
+
+func (b *Bot) detailWorkloadPods(ctx context.Context, r detailReq) {
+	b.showWorkloadPods(ctx, r.chatID, r.messageID, r.kind, r.ns, r.name, r.session)
+}
+
+func (b *Bot) detailScaleOptions(ctx context.Context, r detailReq) {
+	b.showScaleOptions(ctx, r.chatID, r.messageID, r.kind, r.ns, r.name)
+}
+
+// detailPodLogs serves the per-container and tail-size log buttons: Container
+// is the container name, Extra the optional line count.
+func (b *Bot) detailPodLogs(ctx context.Context, r detailReq) {
+	if r.name == "" {
+		return
+	}
+	b.showPodLogs(ctx, r.chatID, r.ns, r.name, r.container, r.extra)
 }
 
 // reportError logs the underlying failure and gives the user the API server's
@@ -240,7 +265,9 @@ func (b *Bot) showObjectEvents(ctx context.Context, chatID int64, ns, name strin
 		return
 	}
 	if len(events) == 0 {
-		b.SendMessage(chatID, fmt.Sprintf("📭 No recent events for <code>%s</code>.\n\nEvents expire after about an hour, so this is normal for a stable object.",
+		b.SendMessage(chatID, fmt.Sprintf(
+			"📭 No recent events for <code>%s</code>.\n\n"+
+				"Events expire after about an hour, so this is normal for a stable object.",
 			formatters.EscapeHTML(name)))
 		return
 	}
@@ -269,7 +296,8 @@ func (b *Bot) showSelector(ctx context.Context, chatID int64, kind, ns, name str
 	rich := formatters.RichSelector(r, selector, pods)
 	if !complete {
 		// Silently showing a partial match would misreport ownership.
-		rich += "\n\n> ⚠️ This selector also has matchExpressions, which are not applied here — the real selection may be narrower."
+		rich += "\n\n> ⚠️ This selector also has matchExpressions, which are not " +
+			"applied here — the real selection may be narrower."
 	}
 	b.SendRich(chatID, rich,
 		fmt.Sprintf("🎯 %s selector: <code>%s</code> — %d pod(s)",
@@ -487,7 +515,11 @@ func (b *Bot) confirmDrain(ctx context.Context, chatID int64, messageID int, nod
 		),
 	)
 	b.editView(ctx, chatID, messageID, fmt.Sprintf(
-		"⚠️ Drain node <code>%s</code>?\n\nIt currently runs <b>%d</b> pod(s).\n\nThe node will be cordoned and its pods evicted. DaemonSet and static pods are left in place. Evictions respect PodDisruptionBudgets, so some may be refused.",
+		"⚠️ Drain node <code>%s</code>?\n\n"+
+			"It currently runs <b>%d</b> pod(s).\n\n"+
+			"The node will be cordoned and its pods evicted. DaemonSet and static "+
+			"pods are left in place. Evictions respect PodDisruptionBudgets, so "+
+			"some may be refused.",
 		formatters.EscapeHTML(node), len(pods)), &kb)
 }
 
@@ -530,7 +562,8 @@ func (b *Bot) showScaleOptions(ctx context.Context, chatID int64, messageID int,
 		formatters.EscapeHTML(kind), formatters.EscapeHTML(name),
 		formatters.EscapeHTML(nsDisplay(ns)), current)
 	if kind == kindReplicaSets {
-		text += "\n\n⚠️ If a Deployment owns this ReplicaSet, its controller will revert the change within seconds. Scale the Deployment instead."
+		text += "\n\n⚠️ If a Deployment owns this ReplicaSet, its controller will " +
+			"revert the change within seconds. Scale the Deployment instead."
 	}
 
 	kb := b.menuBuilder.GetScaleKeyboard(kind, ns, name, current)
@@ -681,7 +714,9 @@ func (b *Bot) showPreviousLogs(ctx context.Context, chatID int64, ns, name, cont
 		// The common case is a container that has never restarted, which the
 		// API server reports as a somewhat opaque error.
 		b.SendMessage(chatID, fmt.Sprintf(
-			"⏮️ No previous logs for <code>%s</code>.\n\nThis usually means the container has not restarted, so there is no earlier instance to read.\n\n<i>%s</i>",
+			"⏮️ No previous logs for <code>%s</code>.\n\n"+
+				"This usually means the container has not restarted, so there is no "+
+				"earlier instance to read.\n\n<i>%s</i>",
 			formatters.EscapeHTML(name), formatters.EscapeHTML(err.Error())))
 		return
 	}

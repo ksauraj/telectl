@@ -201,6 +201,9 @@ func (h *PortForwardHandler) Handle(
 		return nil
 	}
 
-	h.sendResponse(msg.Chat.ID, fmt.Sprintf("🔌 Port forwarding %s/%s %d -> %d\n(Not fully implemented - would start background port-forward)", namespace, podName, localPort, remotePort))
+	h.sendResponse(msg.Chat.ID, fmt.Sprintf(
+		"🔌 Port forwarding %s/%s %d -> %d\n"+
+			"(Not fully implemented - would start background port-forward)",
+		namespace, podName, localPort, remotePort))
 	return nil
 }

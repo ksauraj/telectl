@@ -243,7 +243,8 @@ func RichDrainResult(node string, res *k8s.DrainResult) string {
 		inner := tg.NewRichDoc()
 		inner.Table([]string{"POD", "ERROR"}, rows, tg.TableOpts{})
 		d.Details(fmt.Sprintf("🔴 Failed (%d)", len(res.Failed)), inner.String())
-		d.Paragraph("Failures are usually a PodDisruptionBudget refusing the eviction. The node stays cordoned, so retrying is safe.")
+		d.Paragraph("Failures are usually a PodDisruptionBudget refusing the " +
+			"eviction. The node stays cordoned, so retrying is safe.")
 	}
 
 	d.Paragraph("Evictions are asynchronous — the pods above have been asked to terminate, not confirmed gone.")

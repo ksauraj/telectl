@@ -7,6 +7,7 @@ import (
 
 	bottg "github.com/go-telegram/bot"
 	botmodels "github.com/go-telegram/bot/models"
+	"github.com/ksauraj/telectl/internal/k8s"
 	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/utils/formatters"
@@ -21,75 +22,132 @@ func NewInlineQueryHandler(b types.BotInterface) *InlineQueryHandler {
 	return &InlineQueryHandler{BaseHandler: NewBaseHandler(b)}
 }
 
-func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery *tg.InlineQuery) error {
-	query := strings.TrimSpace(inlineQuery.Query)
-	if query == "" {
-		return h.showInlineHelp(inlineQuery)
-	}
+// maxInlineResults is Telegram's cap on inline query results.
+const maxInlineResults = 50
 
-	parts := strings.Fields(query)
+// inlineArticle builds one inline result whose message body is a code block.
+func inlineArticle(id, title, description, body string) tg.InlineQueryResultArticle {
+	return tg.InlineQueryResultArticle{
+		Type:        "article",
+		ID:          id,
+		Title:       title,
+		Description: description,
+		InputMessageContent: &tg.InputTextMessageContent{
+			MessageText: body,
+			ParseMode:   "MarkdownV2",
+		},
+	}
+}
+
+// inlineError renders a failure as a single result, so the user sees why the
+// query returned nothing instead of an empty dropdown.
+func inlineError(err error) []tg.InlineQueryResultArticle {
+	return []tg.InlineQueryResultArticle{
+		inlineArticle("error", "Error", err.Error(),
+			fmt.Sprintf("❌ Error: %s", err.Error())),
+	}
+}
+
+func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery *tg.InlineQuery) error {
+	parts := strings.Fields(strings.TrimSpace(inlineQuery.Query))
 	if len(parts) == 0 {
 		return h.showInlineHelp(inlineQuery)
 	}
 
+	// types.ResourceMap already maps every alias to its GVR; this function used
+	// to carry its own copies of both the alias table and the GVR table, so a
+	// resource added to the shared map silently stayed unavailable here.
 	resourceType := strings.ToLower(parts[0])
-	args := parts[1:]
-
-	resourceMap := map[string]string{
-		"po":         "pods",
-		"pod":        "pods",
-		"deploy":     "deployments",
-		"deployment": "deployments",
-		"svc":        "services",
-		"service":    "services",
-		"rs":         "replicasets",
-		"replicaset": "replicasets",
-		"ns":         "namespaces",
-		"namespace":  "namespaces",
-		"no":         "nodes",
-		"node":       "nodes",
-		"cm":         "configmaps",
-		"configmap":  "configmaps",
-		"pvc":        "pvcs",
-		"pv":         "pvs",
-		"ing":        "ingresses",
-		"ingress":    "ingresses",
-		"ev":         "events",
-		"event":      "events",
-	}
-
-	if mapped, ok := resourceMap[resourceType]; ok {
-		resourceType = mapped
-	}
-
-	validResources := map[string]schema.GroupVersionResource{
-		"pods":        {Group: "", Version: "v1", Resource: "pods"},
-		"deployments": {Group: "apps", Version: "v1", Resource: "deployments"},
-		"services":    {Group: "", Version: "v1", Resource: "services"},
-		"replicasets": {Group: "apps", Version: "v1", Resource: "replicasets"},
-		"namespaces":  {Group: "", Version: "v1", Resource: "namespaces"},
-		"nodes":       {Group: "", Version: "v1", Resource: "nodes"},
-		"configmaps":  {Group: "", Version: "v1", Resource: "configmaps"},
-		"secrets":     {Group: "", Version: "v1", Resource: "secrets"},
-		"pvcs":        {Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
-		"pvs":         {Group: "", Version: "v1", Resource: "persistentvolumes"},
-		"ingresses":   {Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"},
-		"events":      {Group: "", Version: "v1", Resource: "events"},
-	}
-
-	gvr, ok := validResources[resourceType]
+	entry, ok := types.ResourceMap[resourceType]
 	if !ok {
 		return h.showInlineHelp(inlineQuery)
 	}
 
-	namespace := ""
-	name := ""
-	labelSelector := ""
+	namespace, name, labelSelector := parseInlineArgs(parts[1:])
+	client := h.getK8sClient()
 
+	if name != "" {
+		return h.answerInlineQuery(ctx, inlineQuery.ID,
+			h.singleResourceResult(ctx, client, entry.GVR(), resourceType, namespace, name))
+	}
+
+	resources, err := client.ListResources(ctx, entry.GVR(), namespace, labelSelector, "")
+	if err != nil {
+		return h.answerInlineQuery(ctx, inlineQuery.ID, inlineError(err))
+	}
+	if len(resources) == 0 {
+		return h.answerInlineQuery(ctx, inlineQuery.ID, []tg.InlineQueryResultArticle{
+			inlineArticle("empty", "No resources found",
+				fmt.Sprintf("No %s in namespace %s", resourceType, namespace),
+				fmt.Sprintf("📭 No %s found in namespace `%s`", resourceType, namespace)),
+		})
+	}
+
+	return h.answerInlineQuery(ctx, inlineQuery.ID, resourceListResults(resources))
+}
+
+// singleResourceResult renders one named resource, or the error explaining why
+// it could not be read.
+func (h *InlineQueryHandler) singleResourceResult(
+	ctx context.Context,
+	client *k8s.Client,
+	gvr schema.GroupVersionResource,
+	resourceType, namespace, name string,
+) []tg.InlineQueryResultArticle {
+	resource, err := client.GetResource(ctx, gvr, namespace, name)
+	if err != nil {
+		return inlineError(err)
+	}
+	return []tg.InlineQueryResultArticle{
+		inlineArticle(
+			"resource-"+name,
+			fmt.Sprintf("%s/%s", resourceType, name),
+			fmt.Sprintf("Namespace: %s | Status: %s", namespace, resource.Status),
+			"```\n"+formatters.FormatResource(resource, formatWide)+"\n```",
+		),
+	}
+}
+
+// resourceListResults renders up to Telegram's result cap.
+func resourceListResults(resources []k8s.ResourceInfo) []tg.InlineQueryResultArticle {
+	limit := len(resources)
+	if limit > maxInlineResults {
+		limit = maxInlineResults
+	}
+
+	results := make([]tg.InlineQueryResultArticle, 0, limit)
+	for i := range resources[:limit] {
+		r := &resources[i]
+
+		ns := r.Namespace
+		if ns == "" {
+			ns = "cluster-wide"
+		}
+
+		results = append(results, inlineArticle(
+			"resource-"+r.Name,
+			// StatusEmoji rather than a private copy of the status switch:
+			// the two had drifted, so the same status rendered differently
+			// here and in the tables.
+			fmt.Sprintf("%s %s", formatters.StatusEmoji(r.Status),
+				formatters.TruncateString(r.Name, 30)),
+			fmt.Sprintf("NS: %s | Status: %s", ns, r.Status),
+			"```\n"+formatters.FormatResource(r, formatWide)+"\n```",
+		))
+	}
+	return results
+}
+
+// parseInlineArgs pulls the namespace, an optional resource name and a label
+// selector out of an inline query's arguments.
+//
+// Inline queries are typed a character at a time and re-sent on every keystroke,
+// so this has to tolerate half-written flags without erroring.
+func parseInlineArgs(args []string) (namespace, name, labelSelector string) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
-		case arg == "-n" || arg == "--namespace":
+		case arg == flagNamespaceShort || arg == flagNamespaceLong:
 			if i+1 < len(args) {
 				namespace = args[i+1]
 				i++
@@ -108,122 +166,13 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 		case strings.HasPrefix(arg, "--selector="):
 			labelSelector = strings.TrimPrefix(arg, "--selector=")
 		default:
+			// The first bare word is the resource name.
 			if name == "" {
 				name = arg
 			}
 		}
 	}
-
-	client := h.getK8sClient()
-
-	if name != "" {
-		resource, err := client.GetResource(ctx, gvr, namespace, name)
-		if err != nil {
-			return h.answerInlineQuery(ctx, inlineQuery.ID, []tg.InlineQueryResultArticle{
-				{
-					Type:        "article",
-					ID:          "error",
-					Title:       "Error",
-					Description: err.Error(),
-					InputMessageContent: &tg.InputTextMessageContent{
-						MessageText: fmt.Sprintf("❌ Error: %s", err.Error()),
-						ParseMode:   "MarkdownV2",
-					},
-				},
-			})
-		}
-
-		text := formatters.FormatResource(resource, "wide")
-		return h.answerInlineQuery(ctx, inlineQuery.ID, []tg.InlineQueryResultArticle{
-			{
-				Type:        "article",
-				ID:          "resource-" + name,
-				Title:       fmt.Sprintf("%s/%s", resourceType, name),
-				Description: fmt.Sprintf("Namespace: %s | Status: %s", namespace, resource.Status),
-				InputMessageContent: &tg.InputTextMessageContent{
-					MessageText: "```\n" + text + "\n```",
-					ParseMode:   "MarkdownV2",
-				},
-			},
-		})
-	}
-
-	resources, err := client.ListResources(ctx, gvr, namespace, labelSelector, "")
-	if err != nil {
-		return h.answerInlineQuery(ctx, inlineQuery.ID, []tg.InlineQueryResultArticle{
-			{
-				Type:        "article",
-				ID:          "error",
-				Title:       "Error",
-				Description: err.Error(),
-				InputMessageContent: &tg.InputTextMessageContent{
-					MessageText: fmt.Sprintf("❌ Error: %s", err.Error()),
-					ParseMode:   "MarkdownV2",
-				},
-			},
-		})
-	}
-
-	if len(resources) == 0 {
-		return h.answerInlineQuery(ctx, inlineQuery.ID, []tg.InlineQueryResultArticle{
-			{
-				Type:        "article",
-				ID:          "empty",
-				Title:       "No resources found",
-				Description: fmt.Sprintf("No %s in namespace %s", resourceType, namespace),
-				InputMessageContent: &tg.InputTextMessageContent{
-					MessageText: fmt.Sprintf("📭 No %s found in namespace `%s`", resourceType, namespace),
-					ParseMode:   "MarkdownV2",
-				},
-			},
-		})
-	}
-
-	results := make([]tg.InlineQueryResultArticle, 0, min(len(resources), 50))
-	for _, r := range resources {
-		if len(results) >= 50 {
-			break
-		}
-
-		statusIcon := "⚪"
-		switch r.Status {
-		case "Running", "Active", "Ready":
-			statusIcon = "🟢"
-		case "Pending", "Creating":
-			statusIcon = "🟡"
-		case "Failed", "Error", "CrashLoopBackOff":
-			statusIcon = "🔴"
-		case "Succeeded", "Completed":
-			statusIcon = "🔵"
-		case "Terminating":
-			statusIcon = "🟠"
-		}
-
-		displayName := r.Name
-		if len(displayName) > 30 {
-			displayName = displayName[:27] + "..."
-		}
-
-		ns := r.Namespace
-		if ns == "" {
-			ns = "cluster-wide"
-		}
-
-		text := formatters.FormatResource(&r, "wide")
-
-		results = append(results, tg.InlineQueryResultArticle{
-			Type:        "article",
-			ID:          "resource-" + r.Name,
-			Title:       fmt.Sprintf("%s %s", statusIcon, displayName),
-			Description: fmt.Sprintf("NS: %s | Status: %s", ns, r.Status),
-			InputMessageContent: &tg.InputTextMessageContent{
-				MessageText: "```\n" + text + "\n```",
-				ParseMode:   "MarkdownV2",
-			},
-		})
-	}
-
-	return h.answerInlineQuery(ctx, inlineQuery.ID, results)
+	return namespace, name, labelSelector
 }
 
 func (h *InlineQueryHandler) showInlineHelp(inlineQuery *tg.InlineQuery) error {
@@ -300,11 +249,4 @@ func toModelInputMessageContent(c *tg.InputTextMessageContent) botmodels.InputMe
 		MessageText: c.MessageText,
 		ParseMode:   botmodels.ParseMode(c.ParseMode),
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

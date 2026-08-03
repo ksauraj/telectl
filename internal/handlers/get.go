@@ -32,7 +32,10 @@ func (h *GetHandler) Handle(ctx context.Context, msg *tg.Message, args []string,
 	resourceArg := strings.ToLower(args[0])
 	gvr, ok := resourceMap[resourceArg]
 	if !ok {
-		h.sendResponse(msg.Chat.ID, fmt.Sprintf("Unknown resource: %s\nSupported: pods, deployments, services, replicasets, namespaces, nodes, configmaps, secrets, pvcs, pvs, ingresses, events", resourceArg))
+		h.sendResponse(msg.Chat.ID, fmt.Sprintf(
+			"Unknown resource: %s\nSupported: pods, deployments, services, "+
+				"replicasets, namespaces, nodes, configmaps, secrets, pvcs, pvs, "+
+				"ingresses, events", resourceArg))
 		return nil
 	}
 

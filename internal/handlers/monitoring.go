@@ -67,7 +67,8 @@ func (h *TopHandler) topPods(
 
 		h.bot.SendRich(msg.Chat.ID,
 			"> ⚠️ metrics-server not available — showing the pod list instead.\n\n"+formatters.RichResourceList(pods, true),
-			fmt.Sprintf("⚠️ Metrics server not available. Showing pod list instead:\n\n%s", formatters.FormatResourceList(pods, "wide", true)))
+			fmt.Sprintf("⚠️ Metrics server not available. Showing pod list instead:\n\n%s",
+				formatters.FormatResourceList(pods, formatWide, true)))
 		return nil
 	}
 
@@ -99,7 +100,8 @@ func (h *TopHandler) topNodes(ctx context.Context, msg *tg.Message, client *k8s.
 		}
 		h.bot.SendRich(msg.Chat.ID,
 			"> ⚠️ metrics-server not available — showing the node list instead.\n\n"+formatters.RichResourceList(nodes, true),
-			fmt.Sprintf("⚠️ Metrics server not available. Showing node list:\n\n%s", formatters.FormatResourceList(nodes, "wide", true)))
+			fmt.Sprintf("⚠️ Metrics server not available. Showing node list:\n\n%s",
+				formatters.FormatResourceList(nodes, formatWide, true)))
 		return nil
 	}
 

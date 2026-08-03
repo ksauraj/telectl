@@ -31,12 +31,6 @@ const (
 	cmdLogs = "logs"
 )
 
-// Callback verbs that appear in more than one dispatch switch.
-const (
-	verbHome = "home"
-	verbPage = "page"
-)
-
 type Bot struct {
 	tgBot        *tg.RealBot
 	libBot       *bottg.Bot
@@ -258,14 +252,17 @@ func (b *Bot) handleCommand(ctx context.Context, msg *botmodels.Message, session
 	cmd := strings.TrimPrefix(msg.Text, "/")
 	cmd = strings.Split(cmd, " ")[0]
 	if !b.IsCommandAllowed(cmd) {
-		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("❌ Command /%s is not allowed.", cmd), "HTML", nil); err != nil {
+		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID,
+			fmt.Sprintf("❌ Command /%s is not allowed.", cmd), "HTML", nil); err != nil {
 			b.logger.Error("Failed to send command not allowed", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
 		}
 		return
 	}
 	handler, ok := b.handlers[cmd]
 	if !ok {
-		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("❌ Unknown command: /%s\nUse /help to see available commands.", cmd), "HTML", nil); err != nil {
+		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID,
+			fmt.Sprintf("❌ Unknown command: /%s\nUse /help to see available commands.", cmd),
+			"HTML", nil); err != nil {
 			b.logger.Error("Failed to send unknown command", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
 		}
 		return
@@ -362,36 +359,10 @@ func (b *Bot) dispatchCallback(
 		b.dispatchResourceCallback(ctx, chatID, messageID, action, session)
 
 	case "monitor":
-		switch action.Action {
-		case verbHome:
-			kb := b.menuBuilder.GetMonitorInlineKeyboard()
-			b.editView(ctx, chatID, messageID, "📊 <b>Monitoring</b>\n\nPick a view.", &kb)
-		case "top":
-			resType := action.ResourceType
-			if resType == "" {
-				resType = "pods"
-			}
-			b.runCommand(ctx, "top", []string{resType}, chatID, session)
-		case "events":
-			b.runCommand(ctx, "events", nil, chatID, session)
-		case "watch":
-			b.SendMessage(chatID, "👁️ Usage: <code>/watch &lt;resource&gt; [-n namespace]</code>")
-		}
+		b.dispatchMonitorCallback(ctx, chatID, messageID, action, session)
 
 	case "ops":
-		switch action.Action {
-		case verbHome:
-			kb := b.menuBuilder.GetOperationsInlineKeyboard()
-			b.editView(ctx, chatID, messageID, "🔧 <b>Operations</b>\n\nPick an operation.", &kb)
-		case "restart":
-			b.SendMessage(chatID, "🔄 Usage: <code>/restart deployment &lt;name&gt; [-n namespace]</code>")
-		case "scale":
-			b.SendMessage(chatID, "📈 Usage: <code>/scale deployment &lt;name&gt; &lt;replicas&gt; [-n namespace]</code>")
-		case "delete":
-			b.SendMessage(chatID, "🗑️ Open a resource from 📦 Resources and use its Delete button.")
-		case "edit":
-			b.SendMessage(chatID, "✏️ Editing is not supported yet.")
-		}
+		b.dispatchOpsCallback(ctx, chatID, messageID, action)
 
 	case "settings":
 		b.dispatchSettingsCallback(ctx, chatID, messageID, action, session)
@@ -463,6 +434,58 @@ func (b *Bot) editToMainMenu(ctx context.Context, chatID int64, messageID int, s
 	b.editView(ctx, chatID, messageID, b.mainMenuText(session), &kb)
 }
 
+// dispatchMonitorCallback handles the "menu:monitor:*" family.
+func (b *Bot) dispatchMonitorCallback(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	action *menus.CallbackAction,
+	session *types.UserSession,
+) {
+	switch action.Action {
+	case menus.VerbHome:
+		kb := b.menuBuilder.GetMonitorInlineKeyboard()
+		b.editView(ctx, chatID, messageID, "📊 <b>Monitoring</b>\n\nPick a view.", &kb)
+	case "top":
+		resType := action.ResourceType
+		if resType == "" {
+			resType = kindPods
+		}
+		b.runCommand(ctx, "top", []string{resType}, chatID, session)
+	case "events":
+		b.runCommand(ctx, "events", nil, chatID, session)
+	case "watch":
+		b.SendMessage(chatID, "👁️ Usage: <code>/watch &lt;resource&gt; [-n namespace]</code>")
+	}
+}
+
+// dispatchOpsCallback handles the "menu:ops:*" family. These entries are
+// signposts to the typed commands: the operations menu has no resource
+// selected, so there is nothing for a verb to act on until the user picks one.
+func (b *Bot) dispatchOpsCallback(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	action *menus.CallbackAction,
+) {
+	switch action.Action {
+	case menus.VerbHome:
+		kb := b.menuBuilder.GetOperationsInlineKeyboard()
+		b.editView(ctx, chatID, messageID, "🔧 <b>Operations</b>\n\nPick an operation.", &kb)
+	case "restart":
+		b.SendMessage(chatID, "🔄 Usage: <code>/restart deployment &lt;name&gt; [-n namespace]</code>")
+	case "scale":
+		b.SendMessage(chatID,
+			"📈 Usage: <code>/scale deployment &lt;name&gt; &lt;replicas&gt; [-n namespace]</code>")
+	case "delete":
+		b.SendMessage(chatID, "🗑️ Open a resource from 📦 Resources and use its Delete button.")
+	case "edit":
+		b.SendMessage(chatID,
+			"✏️ Open a resource from 📦 Resources and use its 📄 YAML button to view "+
+				"the live manifest. Editing from chat is not supported.")
+	}
+}
+
 // dispatchResourceCallback handles the "menu:resource:*" family.
 func (b *Bot) dispatchResourceCallback(
 	ctx context.Context,
@@ -485,7 +508,7 @@ func (b *Bot) dispatchResourceCallback(
 		// Full describe output is one tap away behind the Describe button.
 		b.showResourceDetail(ctx, chatID, messageID, action.ResourceType, action.Namespace, action.Name, session)
 
-	case "refresh", "list", verbPage, "filter":
+	case "refresh", "list", menus.VerbPage, "filter":
 		// The resource-type buttons emit "menu:resource:<type>", which the
 		// parser reports as Action=<type> with no ResourceType. Fall back to
 		// the action verb so "menu:resource:pods" still lists pods.
@@ -563,7 +586,8 @@ func (b *Bot) listResources(
 		return
 	}
 
-	kb := b.menuBuilder.GetResourceListInlineKeyboard(resourceType, resources, page, b.menuBuilder.GetPageSize(), namespace)
+	kb := b.menuBuilder.GetResourceListInlineKeyboard(
+		resourceType, resources, page, b.menuBuilder.GetPageSize(), namespace)
 
 	// Show the page's slice as a native table above the buttons, so the list is
 	// readable at a glance rather than only as truncated button labels.
@@ -616,9 +640,9 @@ func (b *Bot) dispatchNamespaceCallback(
 	session *types.UserSession,
 ) {
 	switch action.Action {
-	case "pick", verbPage:
+	case "pick", menus.VerbPage:
 		page := 0
-		if action.Action == verbPage {
+		if action.Action == menus.VerbPage {
 			if p, err := strconv.Atoi(action.Name); err == nil && p >= 0 {
 				page = p
 			}
@@ -708,7 +732,7 @@ func (b *Bot) dispatchSettingsCallback(
 	session *types.UserSession,
 ) {
 	switch action.Action {
-	case verbHome:
+	case menus.VerbHome:
 		kb := b.menuBuilder.GetSettingsInlineKeyboard()
 		text := fmt.Sprintf("⚙️ <b>Settings</b>\n\n<b>Context:</b> %s\n<b>Namespace:</b> %s",
 			formatters.EscapeHTML(b.currentContextName(session)),
@@ -773,7 +797,9 @@ func (b *Bot) dispatchResourceAction(
 		b.runCommand(ctx, "restart", append([]string{"deployment", action.Name}, nsArgs()...), chatID, session)
 
 	case "exec":
-		b.SendMessage(chatID, "🖥️ Usage: <code>/exec &lt;pod&gt; [-c container] -n &lt;namespace&gt; -- &lt;command&gt;</code>")
+		b.SendMessage(chatID,
+			"🖥️ Usage: <code>/exec &lt;pod&gt; [-c container] "+
+				"-n &lt;namespace&gt; -- &lt;command&gt;</code>")
 
 	case "portforward":
 		b.SendMessage(chatID, "🔌 Usage: <code>/portforward &lt;pod&gt; &lt;local:remote&gt; [-n namespace]</code>")
@@ -818,12 +844,16 @@ func (b *Bot) handleReplyKeyboard(ctx context.Context, msg *botmodels.Message, s
 		b.ShowResourceTypes(ctx, msg.Chat.ID, session)
 		return true
 	case "📋 Logs", cmdLogs:
-		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID, "Usage: /logs <pod> [-c container] [-n namespace] [-f] [--tail N]", "HTML", nil); err != nil {
+		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID,
+			"Usage: /logs <pod> [-c container] [-n namespace] [-f] [--tail N]",
+			"HTML", nil); err != nil {
 			b.logger.Error("Failed to send logs usage", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
 		}
 		return true
 	case "🖥️ Exec", "exec":
-		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID, "Usage: /exec <pod> [-c container] -n namespace -- <command>", "HTML", nil); err != nil {
+		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID,
+			"Usage: /exec <pod> [-c container] -n namespace -- <command>",
+			"HTML", nil); err != nil {
 			b.logger.Error("Failed to send exec usage", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
 		}
 		return true
@@ -851,7 +881,9 @@ func (b *Bot) handleReplyKeyboard(ctx context.Context, msg *botmodels.Message, s
 
 func (b *Bot) handleExecInput(ctx context.Context, msg *botmodels.Message, session *types.UserSession) {
 	pod, namespace, container := session.GetExecInfo()
-	if _, err := b.tgBot.SendText(ctx, msg.Chat.ID, fmt.Sprintf("Exec in %s/%s [%s] — not fully implemented", namespace, pod, container), "HTML", nil); err != nil {
+	if _, err := b.tgBot.SendText(ctx, msg.Chat.ID,
+		fmt.Sprintf("Exec in %s/%s [%s] — not fully implemented", namespace, pod, container),
+		"HTML", nil); err != nil {
 		b.logger.Error("Failed to send exec input message", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
 	}
 	session.ClearExecMode()
@@ -905,7 +937,8 @@ func (b *Bot) ShowMainMenu(ctx context.Context, chatID int64, session *types.Use
 func (b *Bot) ShowResourceTypes(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "resource_types"})
 	kb := b.menuBuilder.GetResourceTypeInlineKeyboard()
-	if _, err := b.tgBot.SendText(ctx, chatID, "📦 <b>Resources</b>\n\nPick a resource type to browse.", "HTML", &kb); err != nil {
+	if _, err := b.tgBot.SendText(ctx, chatID,
+		"📦 <b>Resources</b>\n\nPick a resource type to browse.", "HTML", &kb); err != nil {
 		b.logger.Error("Failed to send resource types", zap.Error(err), zap.Int64("chat_id", chatID))
 	}
 }

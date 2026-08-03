@@ -47,35 +47,7 @@ func (h *ExecHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 	podName := args[0]
 	namespace := h.getNamespace(session, args[1:], h.getConfig().Kubernetes.DefaultNamespace)
 
-	// Parse flags
-	container := ""
-	commandStart := 1
-	for i := 1; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == "-c" || arg == "--container":
-			if i+1 < len(args) {
-				container = args[i+1]
-				commandStart = i + 2
-				i++
-			}
-		case strings.HasPrefix(arg, "-c="):
-			container = strings.TrimPrefix(arg, "-c=")
-			commandStart = i + 1
-		case strings.HasPrefix(arg, "--container="):
-			container = strings.TrimPrefix(arg, "--container=")
-			commandStart = i + 1
-		}
-	}
-
-	// Build command
-	var command []string
-	if commandStart < len(args) {
-		command = args[commandStart:]
-	} else {
-		// Interactive mode
-		command = []string{"sh"}
-	}
+	container, command := parseExecArgs(args)
 
 	client := h.getK8sClient()
 
@@ -87,7 +59,8 @@ func (h *ExecHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 
 	// If no container specified, use first container
 	if container == "" {
-		if containers, ok := pod.Details["spec"].(map[string]interface{})["containers"].([]interface{}); ok && len(containers) > 0 {
+		spec, _ := pod.Details["spec"].(map[string]interface{})
+		if containers, ok := spec["containers"].([]interface{}); ok && len(containers) > 0 {
 			if firstContainer, ok := containers[0].(map[string]interface{}); ok {
 				if name, ok := firstContainer["name"].(string); ok {
 					container = name
@@ -100,12 +73,45 @@ func (h *ExecHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 	}
 
 	// If interactive mode (no command or just shell)
-	if len(command) == 1 && (command[0] == "sh" || command[0] == "bash" || command[0] == "/bin/sh" || command[0] == "/bin/bash") {
+	isShell := len(command) == 1 &&
+		(command[0] == "sh" || command[0] == "bash" ||
+			command[0] == "/bin/sh" || command[0] == "/bin/bash")
+	if isShell {
 		return h.startInteractiveSession(ctx, msg, session, podName, namespace, container)
 	}
 
 	// One-shot command execution
 	return h.executeCommand(ctx, msg, client, podName, namespace, container, command)
+}
+
+// parseExecArgs splits /exec's arguments into the container flag and the
+// command to run inside the pod.
+//
+// Anything after the flags is the command, passed through verbatim — it belongs
+// to the container's shell, not to telectl, so it is not interpreted here.
+// With no command, an interactive shell is started instead.
+func parseExecArgs(args []string) (container string, command []string) {
+	containerFlag := valueFlag{short: "-c", long: "--container"}
+
+	// args[0] is the pod name.
+	commandStart := 1
+	for i := 1; i < len(args); {
+		value, consumed, ok := containerFlag.match(args[i], args[i+1:])
+		if !ok {
+			break // first non-flag argument begins the command
+		}
+		if value != "" {
+			container = value
+		}
+		i += consumed
+		commandStart = i
+	}
+
+	if commandStart < len(args) {
+		return container, args[commandStart:]
+	}
+	// No command given: interactive shell.
+	return container, []string{"sh"}
 }
 
 func (h *ExecHandler) startInteractiveSession(
@@ -158,7 +164,10 @@ func (h *ExecHandler) startInteractiveSession(
 		),
 	)
 
-	h.bot.SendKeyboard(chatID, fmt.Sprintf("🖥️ *Interactive session started*\nPod: %s/%s\nContainer: %s\nType commands below. Use /exit to quit.", namespace, podName, container), &keyboard)
+	h.bot.SendKeyboard(chatID, fmt.Sprintf(
+		"🖥️ *Interactive session started*\nPod: %s/%s\nContainer: %s\n"+
+			"Type commands below. Use /exit to quit.",
+		namespace, podName, container), &keyboard)
 
 	// Start exec in background
 	go func() {
