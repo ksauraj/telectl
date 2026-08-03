@@ -236,8 +236,12 @@ the new state.
 
 ### "Not yet wired" — nothing left
 
-Every button rendered by the keyboard builders now has a dispatcher branch.
-If you ever tap something and see **"⚠️ That action is not available yet."**,
+Every button rendered by the keyboard builders now has a dispatcher branch, and
+a test enforces it: it walks every keyboard the menu builder can produce,
+collects the action verb from each button's callback data, and fails if any verb
+has no handler. Removing a handler fails that test by name.
+
+If you ever tap a button and see **"⚠️ That action is not available yet."**,
 that is a bug — please report it.
 
 ### Deletion is always confirmed

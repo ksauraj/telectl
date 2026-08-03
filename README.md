@@ -215,6 +215,9 @@ Telegram user
   Kubernetes API server
 ```
 
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full breakdown,
+including the testing approach and how to extend each layer.
+
 ### Key design decisions
 
 **No kubectl subprocess.** Every operation goes through client-go. This means
