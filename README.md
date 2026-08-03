@@ -1,104 +1,91 @@
-# k8s-telegram-bot
+# telectl
 
-A production-ready Telegram bot for Kubernetes cluster management. Built with Go for performance and reliability.
+A Telegram bot for Kubernetes cluster management. Talks to the API server
+directly through client-go — no kubectl subprocess, no shell escaping, no
+binary to ship in the container image.
 
 [![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Build Status](https://github.com/ksauraj/k8s-telegram-bot/workflows/CI/badge.svg)](https://github.com/ksauraj/k8s-telegram-bot/actions)
-[![Docker](https://img.shields.io/badge/Docker-ksauraj/k8s-telegram-bot-2496ED?logo=docker)](https://hub.docker.com/r/ksauraj/k8s-telegram-bot)
+[![CI](https://github.com/ksauraj/telectl/actions/workflows/ci.yml/badge.svg)](https://github.com/ksauraj/telectl/actions)
+[![Docker](https://img.shields.io/badge/Docker-ksauraj%2Ftelectl-2496ED?logo=docker)](https://hub.docker.com/r/ksauraj/telectl)
 
-## Features
+## What it does
 
-### Interactive Menu System
-- **Bot Menu Button**: Persistent menu in chat header with quick access to all features
-- **Reply Keyboard**: Always-visible bottom bar with main actions (Resources, Logs, Exec, Contexts, Monitor, Operations, Settings)
-- **Inline Navigation**: Kubernetes resource browsing with pagination, similar to k9s
-- **Action Keyboards**: Context-aware buttons per resource (Logs, Exec, Describe, Scale, Restart, Delete)
-- **Namespace Selector**: Visual namespace switching with current namespace indicator
+**Browse resources** — tap through Pods, Deployments, Services, ReplicaSets,
+Namespaces, Nodes, ConfigMaps, Secrets, PVCs, PVs, Ingresses with pagination.
+Each resource opens a detail pane with context-aware action buttons.
 
-### Resource Management
-- List resources: Pods, Deployments, Services, ReplicaSets, Namespaces, Nodes, ConfigMaps, Secrets, PVCs, PVs, Ingresses
-- Describe resources: Detailed information with events
-- Multiple output formats: Table, Wide, JSON, YAML, Name-only
-- Label selectors and field selectors: Filter resources precisely
-- All namespaces support: -A flag for cluster-wide queries
+**Per-resource actions** — Describe, Labels, Selector, Endpoints, Rollout
+history, Pods (for workloads), Logs, Exec, Scale, Cordon/Uncordon, Drain,
+Restart, Delete. Every button is wired; none silently does nothing.
 
-### Logs and Debugging
-- View logs: /logs <pod> [-c container] [--tail N] [--since TIME]
-- Follow logs: Real-time log streaming with -f flag
-- Previous container logs: Access logs from crashed containers with -p
-- Timestamps: Optional timestamp display
+**Logs** — view, follow (`-f`), previous container (`-p`), tail, since.
+Container selection from a button keyboard.
 
-### Interactive Execution
-- Exec into containers: /exec <pod> [-c container] [command]
-- Interactive shell: Start persistent shell sessions
-- Command history: Session-based command tracking
+**Exec** — interactive shell or single command. The container flag (`-c`) is
+parsed correctly: `/exec pod sh -c "echo hi"` runs `sh -c "echo hi"` inside
+the pod, not `sh` with the container set to `echo hi`.
 
-### Port Forwarding
-- Local port forwarding: Access services locally
-- Multiple ports: Forward multiple ports simultaneously
+**Context management** — list contexts, switch in-session (does not rewrite
+`~/.kube/config`), show current config.
 
-### Context Management
-- List contexts: View all kubeconfig contexts with details
-- Switch contexts: /use-context <name> with inline keyboard
-- Current context indicator: Visual feedback in context list
+**Monitoring** — `/top pods|nodes` (requires metrics-server), `/events`,
+`/watch`.
 
-### Monitoring
-- Resource usage: /top pods|nodes (requires metrics-server)
-- Events: Cluster events with filtering
-- Watch mode: Real-time resource change notifications
+**Inline queries** — type `@yourbot pods -n kube-system` in any chat.
 
-### Operations
-- Restart deployments: Rolling restart via annotation update
-- Scale deployments: /scale deployment <name> <replicas>
+**Security** — user allowlist, per-user rate limiting, dry-run mode.
 
-### Security and Access Control
-- User allowlist: Restrict bot access to specific users
-- Admin commands: Separate admin user list for sensitive operations
-- Rate limiting: Per-user request throttling
-- Dry-run mode: Test commands without making changes
-
-## Quick Start
+## Quick start
 
 ### Prerequisites
+
 - Go 1.23+
-- Telegram Bot Token (from @BotFather)
-- Kubernetes cluster access (kubeconfig)
+- A Telegram bot token from [@BotFather](https://t.me/BotFather)
+- A kubeconfig with access to your cluster
 
-### Installation
+### Install from source
 
-#### From Source
 ```bash
-git clone https://github.com/ksauraj/k8s-telegram-bot
-cd k8s-telegram-bot
+git clone https://github.com/ksauraj/telectl
+cd telectl
 make build
 ```
 
-#### Using Docker
+### Install with Go
+
 ```bash
-docker pull ksauraj/k8s-telegram-bot:latest
+go install github.com/ksauraj/telectl/cmd/telectl@latest
 ```
 
-#### Using Go Install
+### Docker
+
 ```bash
-go install github.com/ksauraj/k8s-telegram-bot/cmd/k8sbot@latest
+docker pull ksauraj/telectl:latest
 ```
 
-### Configuration
+## Configuration
 
-1. Copy the example config:
-```bash
-cp config.yaml.example ~/.config/k8s-telegram-bot.yaml
-```
+### Minimal config file
 
-2. Edit the config with your bot token:
 ```yaml
+# ~/.config/telectl/telectl.yaml
 telegram:
   bot_token: "YOUR_BOT_TOKEN_FROM_BOTFATHER"
-  allowed_user_ids: [123456789]  # Optional: your Telegram user ID
+  allowed_user_ids: [123456789]   # your Telegram user ID; omit to allow everyone
 ```
 
-3. Or use environment variables:
+Find your Telegram user ID by messaging [@userinfobot](https://t.me/userinfobot).
+
+Config file search order: `--config` flag → `$HOME/.config/telectl/` →
+`$HOME/.config/` → `/etc/telectl/`. The file must be named `telectl.yaml`
+(or `.yml`, `.json`, `.toml`). telectl refuses to start if it accidentally
+picks up a kubeconfig or the compiled binary.
+
+### Environment variables
+
+All settings can be overridden with environment variables:
+
 ```bash
 export TELEGRAM_BOT_TOKEN="your-token"
 export KUBECONFIG=/path/to/kubeconfig
@@ -108,306 +95,251 @@ export ALLOWED_USER_IDS="123456789,987654321"
 ### Running
 
 ```bash
-# Direct binary
-./k8s-telegram-bot --config ~/.config/k8s-telegram-bot.yaml
+# With a config file
+./telectl --config ~/.config/telectl/telectl.yaml
 
-# With Docker
+# With environment variables only
+TELEGRAM_BOT_TOKEN=xxx KUBECONFIG=~/.kube/config ./telectl
+
+# Docker
 docker run --rm -it \
-  -v ~/.kube:/home/botuser/.kube:ro \
-  -v ~/.config/k8s-telegram-bot.yaml:/app/config.yaml:ro \
-  ksauraj/k8s-telegram-bot:latest
+  -v ~/.kube:/home/telectl/.kube:ro \
+  -v ~/.config/telectl/telectl.yaml:/app/config.yaml:ro \
+  -e TELEGRAM_BOT_TOKEN=xxx \
+  ksauraj/telectl:latest
 ```
 
-## Usage Examples
+## Usage
 
-### Interactive Menu System
+### Menu navigation
 
-telectl can be driven entirely by tapping buttons — no command syntax needed.
-See **[docs/MENU_GUIDE.md](docs/MENU_GUIDE.md)** for the full walkthrough:
-navigation model, every button, deletion confirmation, and troubleshooting.
+Send `/start` to open the main menu. Everything is reachable by tapping
+buttons — no command syntax required. See
+[docs/MENU_GUIDE.md](docs/MENU_GUIDE.md) for the full walkthrough and
+[docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the complete configuration reference.
 
-**Start the bot and use the menu:**
+### Typed commands
+
 ```
-/start
+/get pods [-n namespace] [-o wide|json|yaml] [-l selector] [-A]
+/get deployments -n production -o wide
+
+/describe pods my-pod [-n namespace]
+
+/logs my-pod [-c container] [-f] [-p] [--tail N] [--since 5m]
+
+/exec my-pod [-c container] [-- command args...]
+/exec my-pod -- sh -c "cat /etc/hosts"
+
+/contexts
+/use-context production-cluster
+/config
+
+/top pods|nodes
+/events [-n namespace]
+
+/restart deployment my-app [-n namespace]
+/scale deployment my-app 5 [-n namespace]
 ```
 
-This shows the main menu with reply keyboard. Tap buttons to navigate:
-- Resources: Browse all resource types with pagination
-- Logs: View pod logs with follow/previous options
-- Exec: Execute commands in containers
-- Port Forward: Forward local ports to pods
-- Contexts: Switch kubeconfig contexts
-- Monitor: Top pods/nodes, events, watch
-- Operations: Restart, scale deployments
-- Settings: Namespace, context, theme settings
+### Inline queries
 
-**Bot Menu Button** (in chat header): Tap for quick command access.
-
-### Inline Queries
-Use the bot from any chat by typing:
 ```
 @yourbot pods
 @yourbot pods -n kube-system
-@yourbot deployments nginx
-@yourbot services -l app=nginx
+@yourbot deployments nginx -n production
 @yourbot nodes
+@yourbot services -l app=nginx
 ```
 
-### Basic Resource Queries
-```bash
-# List all pods in default namespace
-/get pods
+Supported aliases: `po`/`pod`, `deploy`/`deployment`, `svc`/`service`,
+`rs`/`replicaset`, `ns`/`namespace`, `no`/`node`, `cm`/`configmap`,
+`pvc`, `pv`, `ing`/`ingress`, `ev`/`event`, and their plurals.
 
-# List pods in specific namespace
-/get pods -n kube-system
+## Configuration reference
 
-# Get wide output with node/IP info
-/get pods -o wide
+| Key | Env var | Default | Description |
+|-----|---------|---------|-------------|
+| `telegram.bot_token` | `TELEGRAM_BOT_TOKEN` | — | **Required.** Bot token from @BotFather |
+| `telegram.allowed_user_ids` | `ALLOWED_USER_IDS` | `[]` | Comma-separated Telegram user IDs. Empty = allow everyone (not recommended in production) |
+| `telegram.admin_user_ids` | `ADMIN_USER_IDS` | `[]` | Admin user IDs for privileged operations |
+| `kubernetes.kubeconfig_path` | `KUBECONFIG` | `~/.kube/config` | Path to kubeconfig |
+| `kubernetes.context` | — | current context | Override the active context at startup |
+| `kubernetes.default_namespace` | — | `default` | Namespace used when `-n` is not given |
+| `kubernetes.dry_run` | — | `false` | Log what would happen without making API calls |
+| `logging.level` | — | `info` | `debug`, `info`, `warn`, `error` |
+| `bot.rate_limit` | — | `30` | Max requests per user per minute |
+| `bot.enable_menu_button` | — | `true` | Show the persistent menu button in the chat header |
+| `bot.enable_reply_keyboard` | — | `true` | Show the persistent reply keyboard |
+| `bot.menu_page_size` | — | `10` | Resources shown per page in list views |
+| `bot.max_message_length` | — | `4096` | Telegram's hard limit; long output is split |
 
-# Filter by labels
-/get pods -l app=nginx
+## Security
 
-# Get all resources across namespaces
-/get pods -A
+**Always set `allowed_user_ids` in production.** Without it, anyone who
+discovers your bot token can run kubectl-equivalent commands against your
+cluster.
 
-# JSON output for scripting
-/get deployment my-app -o json
-```
+The bot uses the kubeconfig's credentials directly, so its RBAC permissions
+are exactly those of the configured user or service account. Scope them to
+what the bot actually needs.
 
-### Logs
-```bash
-# View recent logs
-/logs my-pod
+`dry_run: true` logs every mutating operation without executing it — useful
+for auditing what the bot would do before granting it write access.
 
-# Follow logs in real-time
-/logs my-pod -f
-
-# Specific container
-/logs my-pod -c nginx
-
-# Last 100 lines
-/logs my-pod --tail 100
-
-# Logs from last hour
-/logs my-pod --since 1h
-
-# Previous container (crashed)
-/logs my-pod -p
-```
-
-### Exec
-```bash
-# Interactive shell
-/exec my-pod
-
-# Specific container
-/exec my-pod -c nginx
-
-# Run single command
-/exec my-pod -- ls -la /var/log
-
-# With namespace
-/exec my-pod -n production -- cat /etc/nginx/nginx.conf
-```
-
-### Context Management
-```bash
-# List all contexts
-/contexts
-
-# Switch context (with inline keyboard)
-/use-context production-cluster
-
-# Show current config
-/config
-```
-
-### Monitoring
-```bash
-# Pod resource usage
-/top pods
-
-# Node resource usage
-/top nodes
-
-# Sort by memory
-/top pods --sort memory
-
-# Recent events
-/events
-
-# Events in specific namespace
-/events -n production
-```
-
-### Operations
-```bash
-# Restart deployment
-/restart deployment my-app
-
-# Scale deployment
-/scale deployment my-app 5
-```
+Context switching (`/use-context`) rebuilds the in-process API clients but
+does not write to `~/.kube/config`, so it affects only this bot session and
+does not change what `kubectl` sees on the same machine.
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   Telegram      │────▶│  k8s-telegram-bot │────▶│  Kubernetes API │
-│   User          │     │  (Go)            │     │  Server         │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
-                              │
-                              ▼
-                        ┌──────────────────┐
-                        │  Kubeconfig      │
-                        │  Parser          │
-                        └──────────────────┘
+Telegram user
+     │
+     ▼
+  tg.RealBot          ← thin wrapper around go-telegram/bot
+     │
+     ▼
+  bot.Bot             ← update routing, session management, rate limiting
+  ├── handlers/       ← typed command implementations (/get, /logs, /exec, …)
+  ├── bot/detail.go   ← per-resource detail pane and its 25 action verbs
+  └── menus/          ← keyboard builders and callback data protocol
+     │
+     ▼
+  k8s.Client          ← client-go wrapper; never shells out to kubectl
+  ├── client.go       ← list/get/watch, exec, port-forward, restart
+  ├── nodeops.go      ← cordon, uncordon, drain (eviction subresource)
+  └── workloadops.go  ← selector resolution, rollout history, scale, endpoints
+     │
+     ▼
+  Kubernetes API server
 ```
 
-### Components
-- **bot/**: Telegram bot core, update handling, session management
-- **handlers/**: Command implementations
-- **k8s/**: Kubernetes client wrapper with typed operations
-- **pkg/kubeconfig/**: Kubeconfig parsing and manipulation
-- **internal/config/**: Configuration management (Viper)
-- **internal/utils/**: Formatters, helpers
-- **internal/menus/**: Menu and keyboard builder
+### Key design decisions
+
+**No kubectl subprocess.** Every operation goes through client-go. This means
+no PATH dependency, no shell injection surface, and correct context handling
+for concurrent users.
+
+**Callback data is a protocol.** The `menu:<type>:<field>:…` format is
+declared as a field table in `menus/menus.go`. The dispatcher reads from the
+same table. A test walks every button every keyboard can render and asserts
+each verb has a handler — the invariant whose violation caused the original
+sixteen dead buttons.
+
+**Context switching is session-scoped.** Switching context rebuilds the API
+clients in memory but does not rewrite `~/.kube/config`. Two operators on the
+same machine cannot clobber each other's active context.
+
+**kubeconfig saves go through clientcmd.WriteToFile.** The internal
+`clientcmdapi.Config` type marshals to a format kubectl cannot read. Using the
+versioned writer prevents kubeconfig corruption on context switch.
 
 ## Development
 
-### Setup
 ```bash
+# Build
+make build
+
+# Test (with race detector)
+make test
+
+# Lint
+make lint
+
+# Format + vet + lint + test
+make check
+
+# Cross-compile for all platforms
+make build-all
+
+# Development setup (installs golangci-lint, goimports, staticcheck)
 make dev-setup
 ```
 
-### Run Tests
+### Running locally
+
 ```bash
-make test
+make run-dev   # requires TELEGRAM_BOT_TOKEN and KUBECONFIG in env
 ```
 
-### Lint and Format
-```bash
-make check
-```
-
-### Build for All Platforms
-```bash
-make build-all
-```
-
-## Configuration Reference
-
-| Setting | Env Var | Default | Description |
-|---------|---------|---------|-------------|
-| telegram.bot_token | TELEGRAM_BOT_TOKEN | - | Required: Bot token |
-| telegram.allowed_user_ids | ALLOWED_USER_IDS | [] | Allowed user IDs |
-| telegram.admin_user_ids | ADMIN_USER_IDS | [] | Admin user IDs |
-| kubernetes.kubeconfig_path | KUBECONFIG | ~/.kube/config | Kubeconfig path |
-| kubernetes.default_namespace | - | default | Default namespace |
-| kubernetes.dry_run | - | false | Dry-run mode |
-| logging.level | - | info | Log level |
-| bot.rate_limit | - | 30 | Requests/minute |
-| bot.enable_menu_button | - | true | Enable bot menu button |
-| bot.enable_reply_keyboard | - | true | Enable reply keyboard |
-| bot.menu_page_size | - | 10 | Items per page in lists |
-
-## Security Considerations
-
-1. **Bot Token**: Keep your bot token secret. Use environment variables.
-2. **User Allowlist**: Always configure allowed_user_ids in production.
-3. **RBAC**: The bot uses the kubeconfig's credentials. Ensure the kubeconfig has appropriate RBAC permissions.
-4. **Network**: Run the bot in a secure network. Consider using a VPN or private network.
-5. **Dry-run**: Use dry_run: true for testing in production clusters.
-
-## Project Structure
+### Project layout
 
 ```
-/home/ubuntu/.hermes/workspace/k8s-telegram-bot/
-├── cmd/k8sbot/
-│   ├── main.go              # Entry point
-│   └── cmd/root.go          # Cobra CLI commands
-├── internal/
-│   ├── bot/
-│   │   └── bot.go           # Core bot with menu integration
-│   ├── config/
-│   │   └── config.go        # Viper config with menu settings
-│   ├── handlers/
-│   │   ├── base.go          # Shared handler utilities
-│   │   ├── start.go         # /start handler
-│   │   ├── help.go          # /help handler
-│   │   ├── version.go       # /version handler
-│   │   ├── get.go           # /get handler (all resources)
-│   │   ├── describe.go      # /describe handler
-│   │   ├── logs.go          # /logs handler
-│   │   ├── exec.go          # /exec handler
-│   │   ├── context.go       # /contexts, /use-context, /config, /portforward
-│   │   ├── monitoring.go    # /top, /events, /watch
-│   │   ├── operations.go    # /restart, /scale
-│   │   ├── menu_handlers.go # /resources, /monitor, /operations, /settings
-│   │   ├── inline_query.go  # Inline query handler
-│   │   └── handlers.go      # Package marker
-│   ├── k8s/
-│   │   └── client.go        # Kubernetes client wrapper
-│   ├── menus/
-│   │   ├── menus.go         # Menu/keyboard builder
-│   │   └── menus_test.go    # Unit tests for callback parsing
-│   └── utils/
-│       ├── formatters.go    # Output formatters
-│       └── formatters_test.go # Formatter tests
-├── pkg/kubeconfig/
-│   ├── kubeconfig.go        # Kubeconfig parser
-│   └── kubeconfig_test.go   # Parser tests
-├── .github/workflows/ci.yml # CI/CD pipeline
-├── Dockerfile               # Multi-stage build
-├── Makefile                 # Build, test, lint, release targets
-├── config.yaml.example      # Example configuration
-├── .env.example             # Environment variables template
-├── .golangci.yml            # Linter configuration
-├── .gitignore               # Git ignore rules
-├── LICENSE                  # Apache 2.0 license
-├── README.md                # This file
-└── scripts/
-    ├── setup.sh             # Development setup
-    └── release.sh           # Release automation
+cmd/telectl/
+├── main.go              # entry point: signal handling, logger init
+└── cmd/root.go          # cobra CLI: flags, config loading, bot.New
+
+internal/
+├── bot/
+│   ├── bot.go           # update routing, command dispatch, session management
+│   ├── detail.go        # per-resource detail pane (29 action verbs)
+│   └── *_test.go        # bot-level integration tests with fake Telegram
+├── config/
+│   └── config.go        # Viper config, env binding, startup validation
+├── handlers/
+│   ├── base.go          # shared flag parser (parseFlags, valueFlag)
+│   ├── get.go           # /get
+│   ├── describe.go      # /describe
+│   ├── logs.go          # /logs (parseLogFlags)
+│   ├── exec.go          # /exec (parseExecArgs)
+│   ├── context.go       # /contexts, /use-context, /config, /portforward
+│   ├── monitoring.go    # /top, /events, /watch
+│   ├── operations.go    # /restart, /scale
+│   └── inline_query.go  # inline query handler
+├── k8s/
+│   ├── client.go        # list/get/watch, exec, port-forward, restart
+│   ├── nodeops.go       # cordon, uncordon, drain
+│   └── workloadops.go   # selector, rollout history, scale, endpoints
+├── menus/
+│   ├── menus.go         # keyboard builders, ParseCallbackData field table
+│   └── tokens.go        # token store (64-byte callback_data limit)
+├── tg/
+│   ├── bot.go           # RealBot: SendText, SendRich, EditRich, …
+│   └── types.go         # Message, InlineKeyboard, RichDoc, …
+├── types/
+│   └── types.go         # ResourceMap (alias → GVR), UserSession, RateLimiter
+└── utils/formatters/
+    ├── formatters.go    # table rendering, status emoji, TruncateString
+    ├── rich.go          # RichDoc builder (headings, tables, code, details)
+    └── richdetail.go    # per-resource rich renderers (drain result, rollout, …)
+
+pkg/kubeconfig/
+├── kubeconfig.go        # parse, SwitchContext, Save (via clientcmd.WriteToFile)
+└── save_test.go         # round-trip and corruption-prevention tests
+
+.github/workflows/ci.yml # tidy → test → lint → build → release
+Dockerfile               # multi-stage, alpine final image
+Makefile
+.golangci.yml
+config.yaml.example
 ```
 
 ## Dependencies
 
-### Core
-- github.com/go-telegram-bot-api/telegram-bot-api/v5 - Telegram Bot API wrapper
-- github.com/spf13/cobra - CLI framework
-- github.com/spf13/viper - Configuration management
-- go.uber.org/zap - Structured logging
-
-### Kubernetes
-- k8s.io/client-go - Kubernetes Go client
-- k8s.io/apimachinery - Kubernetes API machinery
-- k8s.io/api - Kubernetes API types
-- sigs.k8s.io/yaml - YAML utilities
-- gopkg.in/yaml.v3 - YAML parsing
+| Package | Purpose |
+|---------|---------|
+| `github.com/go-telegram/bot` | Telegram Bot API |
+| `github.com/spf13/cobra` | CLI |
+| `github.com/spf13/viper` | Configuration |
+| `go.uber.org/zap` | Structured logging |
+| `k8s.io/client-go` | Kubernetes API client |
+| `k8s.io/api`, `k8s.io/apimachinery` | Kubernetes types |
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run `make check` to ensure code quality
-5. Submit a pull request
+```bash
+git clone https://github.com/ksauraj/telectl
+cd telectl
+make dev-setup
+# make your changes
+make check          # must pass before opening a PR
+```
 
 ## License
 
-Apache License 2.0 - See LICENSE for details.
+Apache License 2.0 — see [LICENSE](LICENSE).
 
 ## Author
 
-Sauraj Kumar Singh (@ksauraj)
-- DevOps Engineer
-- Kubernetes Enthusiast
-
-## Acknowledgments
-
-- client-go - Kubernetes Go client
-- telegram-bot-api - Telegram Bot API wrapper
-- Cobra - CLI framework
-- Viper - Configuration management
-- Zap - Structured logging
+Sauraj Kumar Singh ([@ksauraj](https://github.com/ksauraj))

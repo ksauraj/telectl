@@ -10,157 +10,186 @@ on:
 env:
   GO_VERSION: '1.23'
   BINARY_NAME: telectl
+  # Pinned, not "latest": golangci-lint adds and retires linters between
+  # releases, so an unpinned version turns an unrelated upstream release into a
+  # red build on a commit that changed nothing. Bump this deliberately.
+  GOLANGCI_LINT_VERSION: v1.64.8
+
+permissions:
+  contents: read
 
 jobs:
   tidy:
     name: Go Mod Tidy
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
+      - uses: actions/checkout@v7
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Run go mod tidy
-        run: go mod tidy
-
-      - name: Check for changes
-        id: changes
+      # Verify rather than auto-commit. The previous version committed and
+      # pushed to the default branch from CI, which rewrites history under
+      # anyone who has already pulled — and it pushed *after* the test job had
+      # checked out the untidied tree, so the fix never applied to the run that
+      # produced it.
+      - name: Verify go.mod and go.sum are tidy
         run: |
-          if git diff --quiet go.mod go.sum; then
-            echo "changed=false" >> $GITHUB_OUTPUT
-          else
-            echo "changed=true" >> $GITHUB_OUTPUT
+          go mod tidy
+          if ! git diff --quiet go.mod go.sum; then
+            echo "::error::go.mod/go.sum are not tidy. Run 'go mod tidy' and commit the result."
             git diff go.mod go.sum
+            exit 1
           fi
 
-      - name: Commit changes
-        if: steps.changes.outputs.changed == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add go.mod go.sum
-          git commit -m "chore: run go mod tidy"
-          git push
+      - name: Verify module checksums
+        run: go mod verify
 
   test:
     name: Test
     runs-on: ubuntu-latest
-    needs: tidy
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Verify modules
-        run: go mod verify
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
 
       - name: Run vet
         run: go vet ./...
 
       - name: Run tests
-        run: go test -v -race -coverprofile=coverage.out ./...
+        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage.out
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    needs: tidy
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
           args: --timeout=5m
 
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [test, lint]
+    needs: [tidy, test, lint]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          # Tags are needed for the version stamp below.
+          fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Download dependencies
-        run: go mod download
-
       - name: Build binary
         run: |
           CGO_ENABLED=0 go build \
-            -ldflags="-w -s -X main.version=${{ github.ref_name }} -X main.commit=${{ github.sha }} -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            -ldflags="-w -s \
+              -X main.version=${{ github.ref_name }} \
+              -X main.commit=${{ github.sha }} \
+              -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -o ${{ env.BINARY_NAME }} ./cmd/telectl
 
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
+      # A binary that cannot report its own version is not a working build.
+      - name: Smoke test the binary
+        run: ./${{ env.BINARY_NAME }} version
+
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.BINARY_NAME }}
           path: ${{ env.BINARY_NAME }}
           retention-days: 7
 
-  build-multiarch:
-    name: Build Multi-arch
+  build-release:
+    name: Build Release Binaries
     runs-on: ubuntu-latest
-    needs: [test, lint]
+    needs: [tidy, test, lint]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Build for all platforms
+        run: make build-all VERSION=${{ github.ref_name }}
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-binaries
+          path: dist/
+          retention-days: 7
+
+  docker:
+    name: Docker Image
+    runs-on: ubuntu-latest
+    needs: [tidy, test, lint]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v7
+
+      # Docker Hub credentials are optional: without them the image is built to
+      # prove the Dockerfile still works, but not pushed. Previously this job
+      # failed outright when the secrets were absent, and because `release`
+      # depended on it, a missing secret blocked the entire release.
+      - name: Check for Docker Hub credentials
+        id: creds
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          if [ -n "$DOCKERHUB_USERNAME" ]; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::DOCKERHUB_USERNAME is not set; building without pushing."
+          fi
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        if: steps.creds.outputs.push == 'true'
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ksauraj/${{ env.BINARY_NAME }}
           tags: |
@@ -169,11 +198,11 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ steps.creds.outputs.push == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -182,39 +211,24 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [build, build-multiarch]
+    needs: [build-release, docker]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
-      - name: Download binary
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
-          name: ${{ env.BINARY_NAME }}
+          name: release-binaries
           path: dist/
 
       - name: Create checksums
         run: |
           cd dist
           sha256sum * > checksums.txt
+          cat checksums.txt
 
-      - name: Create release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
-          files: |
-            dist/*
-            dist/checksums.txt
+          files: dist/*
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  notify:
-    name: Notify
-    runs-on: ubuntu-latest
-    needs: [release]
-    if: always() && startsWith(github.ref, 'refs/tags/v')
-    steps:
-      - name: Send notification
-        run: |
-          echo "Release ${{ github.ref_name }} published!"
-          # Add Slack/Discord/Telegram notification here
+          fail_on_unmatched_files: true
