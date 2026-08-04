@@ -512,7 +512,7 @@ func (c *Client) RestartDeployment(ctx context.Context, namespace, name string) 
 	// template is what makes the Deployment controller start a new rollout.
 	patch := []byte(`{"spec":{"template":{"metadata":{"annotations":` +
 		`{"kubectl.kubernetes.io/restartedAt":"` +
-		time.Now().Format(time.RFC3339) + `"}}}}`)
+		time.Now().Format(time.RFC3339) + `"}}}}}`)
 	_, err := c.clientset.AppsV1().Deployments(namespace).Patch(
 		ctx, name, types.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	return err
