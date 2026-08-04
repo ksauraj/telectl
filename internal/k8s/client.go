@@ -128,16 +128,38 @@ func loadingRulesFor(kubeConfigPath string) clientcmd.ClientConfigLoader {
 }
 
 func NewClient(kubeConfigPath, context string, dryRun bool, logger *zap.Logger) (*Client, error) {
-	loadingRules := loadingRulesFor(kubeConfigPath)
-	overrides := &clientcmd.ConfigOverrides{}
-	if context != "" {
-		overrides.CurrentContext = context
-	}
+	var restConfig *rest.Config
+	var err error
 
-	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
-	restConfig, err := clientConfig.ClientConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create rest config: %w", err)
+	if kubeConfigPath != "" {
+		// Explicit kubeconfig path provided
+		loadingRules := loadingRulesFor(kubeConfigPath)
+		overrides := &clientcmd.ConfigOverrides{}
+		if context != "" {
+			overrides.CurrentContext = context
+		}
+		clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
+		restConfig, err = clientConfig.ClientConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create rest config: %w", err)
+		}
+	} else {
+		// No explicit kubeconfig - try in-cluster config first
+		restConfig, err = rest.InClusterConfig()
+		if err != nil {
+			logger.Warn("InClusterConfig failed, falling back to default loading rules", zap.Error(err))
+			// Fall back to default loading rules (honors $KUBECONFIG, ~/.kube/config, etc.)
+			loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+			overrides := &clientcmd.ConfigOverrides{}
+			if context != "" {
+				overrides.CurrentContext = context
+			}
+			clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
+			restConfig, err = clientConfig.ClientConfig()
+			if err != nil {
+				return nil, fmt.Errorf("failed to create rest config: %w", err)
+			}
+		}
 	}
 
 	// Set reasonable defaults
@@ -155,11 +177,16 @@ func NewClient(kubeConfigPath, context string, dryRun bool, logger *zap.Logger) 
 		return nil, fmt.Errorf("failed to create dynamic client: %w", err)
 	}
 
-	// Parse kubeconfig for context info
-	kc, err := kubeconfig.ParseKubeconfig(kubeConfigPath)
-	if err != nil {
-		logger.Warn("Failed to parse kubeconfig for context info", zap.Error(err))
-		kc = &kubeconfig.KubeConfig{ConfigFile: kubeConfigPath}
+	// Parse kubeconfig for context info (only if explicitly provided)
+	var kc *kubeconfig.KubeConfig
+	if kubeConfigPath != "" {
+		kc, err = kubeconfig.ParseKubeconfig(kubeConfigPath)
+		if err != nil {
+			logger.Warn("Failed to parse kubeconfig for context info", zap.Error(err))
+			kc = &kubeconfig.KubeConfig{ConfigFile: kubeConfigPath}
+		}
+	} else {
+		kc = &kubeconfig.KubeConfig{ConfigFile: ""}
 	}
 
 	// Seed currentContext so CurrentContextName is accurate before any switch.

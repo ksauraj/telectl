@@ -362,10 +362,10 @@ func ValidateConfig(cfg *Config) error {
 		return fmt.Errorf("telegram bot token is required")
 	}
 
-	if cfg.Kubernetes.KubeconfigPath == "" {
-		home, _ := os.UserHomeDir()
-		cfg.Kubernetes.KubeconfigPath = filepath.Join(home, ".kube", "config")
-	}
+	// Do NOT set a default kubeconfig path here. Let the k8s client handle it:
+	// - If kubeconfigPath is explicitly set, use it
+	// - If empty, try in-cluster config first, then fall back to default loading rules
+	// This avoids hardcoding /home/telectl/.kube/config in container environments
 
 	if cfg.Kubernetes.Timeout <= 0 {
 		cfg.Kubernetes.Timeout = 30
@@ -379,8 +379,8 @@ func ValidateConfig(cfg *Config) error {
 		cfg.Bot.RateLimit = 30
 	}
 
-	// Expand home directory in kubeconfig path
-	if strings.HasPrefix(cfg.Kubernetes.KubeconfigPath, "~/") {
+	// Expand home directory in kubeconfig path if explicitly set
+	if cfg.Kubernetes.KubeconfigPath != "" && strings.HasPrefix(cfg.Kubernetes.KubeconfigPath, "~/") {
 		home, _ := os.UserHomeDir()
 		cfg.Kubernetes.KubeconfigPath = filepath.Join(home, cfg.Kubernetes.KubeconfigPath[2:])
 	}
