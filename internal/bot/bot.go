@@ -96,6 +96,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*Bot, error) {
 func (b *Bot) registerHandlers() {
 	b.handlers["start"] = handlers.NewStartHandler(b)
 	b.handlers[cmdHelp] = handlers.NewHelpHandler(b)
+	b.handlers["about"] = handlers.NewAboutHandler(b)
 	b.handlers["version"] = handlers.NewVersionHandler(b)
 	b.handlers["get"] = handlers.NewGetHandler(b)
 	b.handlers["describe"] = handlers.NewDescribeHandler(b)
@@ -1030,13 +1031,18 @@ func (b *Bot) currentContextName(session *types.UserSession) string {
 }
 
 func (b *Bot) mainMenuText(session *types.UserSession) string {
-	return fmt.Sprintf(`<b>telectl</b>
+	clusterName := b.currentContextName(session)
+	if clusterName == "" {
+		clusterName = "unknown"
+	}
+	return fmt.Sprintf(`<b>telectl</b> — Kubernetes cluster management from Telegram
 
 <b>Cluster:</b> %s
 <b>Namespace:</b> %s
 
-Choose an action below, or use /help for the full command reference.`,
-		formatters.EscapeHTML(b.currentContextName(session)),
+Choose an action below, or use /help for the full command reference.
+Use /about for version, links, and project info.`,
+		formatters.EscapeHTML(clusterName),
 		formatters.EscapeHTML(session.GetNamespace()))
 }
 

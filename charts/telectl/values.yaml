@@ -96,6 +96,7 @@ bot:
   allowedCommands:
     - "start"
     - "help"
+    - "about"
     - "version"
     - "get"
     - "describe"

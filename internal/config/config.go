@@ -275,7 +275,7 @@ func setDefaults() {
 	// A command missing here is rejected with "not allowed" even though a
 	// handler exists; note the key is "portforward", not "port-forward".
 	viper.SetDefault("bot.allowed_commands", []string{
-		"start", "help", "version",
+		"start", "help", "about", "version",
 		"get", "describe", "logs", "exec", "portforward",
 		"contexts", "use-context", "config",
 		"top", "events", "watch", "restart", "scale",
@@ -370,7 +370,7 @@ func CreateDefaultConfig(path string) error {
 			EnableReplyKeyboard: true,
 			MenuPageSize:        10,
 			AllowedCommands: []string{
-				"start", "help", "version",
+				"start", "help", "about", "version",
 				"get", "describe", "logs", "exec", "portforward",
 				"contexts", "use-context", "config",
 				"top", "events", "watch", "restart", "scale",

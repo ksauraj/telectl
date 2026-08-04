@@ -130,6 +130,7 @@ bot:
   allowed_commands:
     - "start"
     - "help"
+    - "about"
     - "version"
     - "get"
     - "describe"
