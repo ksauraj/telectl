@@ -49,6 +49,8 @@ kubernetes:
   timeout: 30
   # Log mutating operations instead of performing them
   dryRun: false
+  # Cluster name for display purposes (empty = use kubeconfig context name)
+  clusterName: ""
   # client-go rate limiting
   burst: 10
   qps: 5.0

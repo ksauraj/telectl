@@ -14,6 +14,9 @@ data:
       {{- if .Values.kubernetes.context }}
       context: {{ .Values.kubernetes.context | quote }}
       {{- end }}
+      {{- if .Values.kubernetes.clusterName }}
+      cluster_name: {{ .Values.kubernetes.clusterName | quote }}
+      {{- end }}
       timeout: {{ .Values.kubernetes.timeout }}
       dry_run: {{ .Values.kubernetes.dryRun }}
       burst: {{ .Values.kubernetes.burst }}

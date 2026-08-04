@@ -48,6 +48,7 @@ type KubernetesConfig struct {
 	ImpersonateGroups []string `mapstructure:"impersonate_groups"`
 	Burst             int      `mapstructure:"burst"`
 	QPS               float32  `mapstructure:"qps"`
+	ClusterName       string   `mapstructure:"cluster_name"`
 }
 
 type LoggingConfig struct {
@@ -234,6 +235,7 @@ func setDefaults() {
 	viper.SetDefault("kubernetes.dry_run", false)
 	viper.SetDefault("kubernetes.burst", 10)
 	viper.SetDefault("kubernetes.qps", 5.0)
+	viper.SetDefault("kubernetes.cluster_name", "")
 
 	// Logging defaults
 	viper.SetDefault("logging.level", "info")
@@ -325,6 +327,7 @@ func CreateDefaultConfig(path string) error {
 			DryRun:           false,
 			Burst:            10,
 			QPS:              5.0,
+			ClusterName:      "",
 		},
 		Logging: LoggingConfig{
 			Level:  "info",

@@ -11,8 +11,10 @@ rules:
     resources:
       - pods
       - deployments
+      - deployments/scale
       - services
       - replicasets
+      - replicasets/scale
       - namespaces
       - nodes
       - configmaps
@@ -58,8 +60,10 @@ rules:
     resources:
       - pods
       - deployments
+      - deployments/scale
       - services
       - replicasets
+      - replicasets/scale
       - namespaces
       - nodes
       - configmaps
