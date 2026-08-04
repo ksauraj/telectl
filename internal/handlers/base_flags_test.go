@@ -140,6 +140,28 @@ func TestParseExecArgs(t *testing.T) {
 			args:    []string{"api-1", "sh", "-c", "echo hi"},
 			command: []string{"sh", "-c", "echo hi"}},
 
+		// -n/--namespace is a telectl flag: it and its value must be stripped
+		// from the command, not handed to the container as "-n". This was the
+		// bug behind "/exec pod -n atlas -- printenv" execing "-n".
+		{name: "namespace flag stripped before command",
+			args:    []string{"api-1", "-n", "atlas", "printenv"},
+			command: []string{"printenv"}},
+		{name: "namespace and container flags stripped",
+			args:      []string{"api-1", "-n", "atlas", "-c", "sidecar", "ls"},
+			container: "sidecar", command: []string{"ls"}},
+		{name: "namespace joined form stripped",
+			args:    []string{"api-1", "-n=atlas", "printenv"},
+			command: []string{"printenv"}},
+
+		// "--" ends flag parsing: the command after it is passed through even
+		// when it begins with something flag-like.
+		{name: "double dash separates command",
+			args:    []string{"api-1", "-n", "atlas", "--", "printenv"},
+			command: []string{"printenv"}},
+		{name: "double dash lets command keep its flags",
+			args:    []string{"api-1", "--", "ls", "-la"},
+			command: []string{"ls", "-la"}},
+
 		{name: "dangling container flag", args: []string{"api-1", "-c"},
 			command: []string{"sh"}},
 	}

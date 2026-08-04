@@ -87,24 +87,48 @@ func (h *ExecHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 // parseExecArgs splits /exec's arguments into the container flag and the
 // command to run inside the pod.
 //
-// Anything after the flags is the command, passed through verbatim — it belongs
-// to the container's shell, not to telectl, so it is not interpreted here.
-// With no command, an interactive shell is started instead.
+// Only the leading run of telectl flags (-c/--container to pick the container,
+// -n/--namespace which is consumed here but read by getNamespace) is
+// interpreted. Everything from the first non-flag argument on is the command,
+// passed through verbatim — it belongs to the container's shell, not to
+// telectl, so its own flags (e.g. "sh -c 'echo hi'") are never parsed here.
+//
+// A "--" separator ends flag parsing explicitly: everything after it is the
+// command, even if it looks like a flag. This is what lets
+// "/exec pod -n ns -- printenv" work — without it the first bare command such
+// as "printenv" already starts the command, but "-- <flag-like-command>" needs
+// the separator. With no command, an interactive shell is started instead.
 func parseExecArgs(args []string) (container string, command []string) {
 	containerFlag := valueFlag{short: "-c", long: "--container"}
+	namespaceFlag := valueFlag{short: flagNamespaceShort, long: flagNamespaceLong}
 
 	// args[0] is the pod name.
 	commandStart := 1
 	for i := 1; i < len(args); {
-		value, consumed, ok := containerFlag.match(args[i], args[i+1:])
-		if !ok {
-			break // first non-flag argument begins the command
+		// An explicit "--" ends flag parsing; the command is the rest.
+		if args[i] == "--" {
+			commandStart = i + 1
+			break
 		}
-		if value != "" {
-			container = value
+
+		if value, consumed, ok := containerFlag.match(args[i], args[i+1:]); ok {
+			if value != "" {
+				container = value
+			}
+			i += consumed
+			commandStart = i
+			continue
 		}
-		i += consumed
-		commandStart = i
+
+		// -n/--namespace is handled by getNamespace, but it must be skipped
+		// here too or its flag and value would be mistaken for the command.
+		if _, consumed, ok := namespaceFlag.match(args[i], args[i+1:]); ok {
+			i += consumed
+			commandStart = i
+			continue
+		}
+
+		break // first non-flag argument begins the command
 	}
 
 	if commandStart < len(args) {
