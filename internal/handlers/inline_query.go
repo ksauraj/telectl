@@ -44,7 +44,7 @@ func inlineArticle(id, title, description, body string) tg.InlineQueryResultArti
 func inlineError(err error) []tg.InlineQueryResultArticle {
 	return []tg.InlineQueryResultArticle{
 		inlineArticle("error", "Error", err.Error(),
-			fmt.Sprintf("❌ Error: %s", err.Error())),
+			formatters.Btn(formatters.GlyphBroken, fmt.Sprintf("Error: %s", err.Error()))),
 	}
 }
 
@@ -79,7 +79,7 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 		return h.answerInlineQuery(ctx, inlineQuery.ID, []tg.InlineQueryResultArticle{
 			inlineArticle("empty", "No resources found",
 				fmt.Sprintf("No %s in namespace %s", resourceType, namespace),
-				fmt.Sprintf("📭 No %s found in namespace `%s`", resourceType, namespace)),
+				fmt.Sprintf("No %s found in namespace `%s`", resourceType, namespace)),
 		})
 	}
 
@@ -126,10 +126,10 @@ func resourceListResults(resources []k8s.ResourceInfo) []tg.InlineQueryResultArt
 
 		results = append(results, inlineArticle(
 			"resource-"+r.Name,
-			// StatusEmoji rather than a private copy of the status switch:
+			// StatusGlyph rather than a private copy of the status switch:
 			// the two had drifted, so the same status rendered differently
 			// here and in the tables.
-			fmt.Sprintf("%s %s", formatters.StatusEmoji(r.Status),
+			fmt.Sprintf("%s %s", formatters.StatusGlyph(r.Status),
 				formatters.TruncateString(r.Name, 30)),
 			fmt.Sprintf("NS: %s | Status: %s", ns, r.Status),
 			"```\n"+formatters.FormatResource(r, formatWide)+"\n```",
@@ -176,7 +176,7 @@ func parseInlineArgs(args []string) (namespace, name, labelSelector string) {
 }
 
 func (h *InlineQueryHandler) showInlineHelp(inlineQuery *tg.InlineQuery) error {
-	help := `📦 *telectl Inline Query Help*
+	help := `*telectl Inline Query Help*
 
 *Usage:* @bot <resource> [name] [flags]
 
@@ -200,7 +200,7 @@ func (h *InlineQueryHandler) showInlineHelp(inlineQuery *tg.InlineQuery) error {
 		{
 			Type:        "article",
 			ID:          "help",
-			Title:       "📖 Inline Query Help",
+			Title:       "Inline Query Help",
 			Description: "Tap to see usage examples",
 			InputMessageContent: &tg.InputTextMessageContent{
 				MessageText: help,

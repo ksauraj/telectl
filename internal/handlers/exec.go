@@ -10,6 +10,7 @@ import (
 	"github.com/ksauraj/telectl/internal/k8s"
 	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
+	"github.com/ksauraj/telectl/internal/utils/formatters"
 )
 
 type ExecHandler struct {
@@ -152,7 +153,8 @@ func (h *ExecHandler) startInteractiveSession(
 	h.mu.Lock()
 	if existing, ok := h.sessions[chatID]; ok && existing.Active {
 		h.mu.Unlock()
-		h.sendResponse(chatID, "❌ You already have an active exec session. Type /exit to end it first.")
+		h.sendResponse(chatID, formatters.Btn(formatters.GlyphBroken,
+			"You already have an active exec session. Type /exit to end it first."))
 		return nil
 	}
 	h.mu.Unlock()
@@ -184,12 +186,12 @@ func (h *ExecHandler) startInteractiveSession(
 	// Send welcome message with keyboard
 	keyboard := tg.NewInlineKeyboardMarkup(
 		tg.NewInlineKeyboardRow(
-			tg.NewInlineKeyboardButtonData("🔴 Exit Session", "exec:exit"),
+			tg.NewInlineKeyboardButtonData(formatters.Btn(formatters.GlyphCancel, "Exit session"), "exec:exit"),
 		),
 	)
 
 	h.bot.SendKeyboard(chatID, fmt.Sprintf(
-		"🖥️ *Interactive session started*\nPod: %s/%s\nContainer: %s\n"+
+		"*Interactive session started*\nPod: %s/%s\nContainer: %s\n"+
 			"Type commands below. Use /exit to quit.",
 		namespace, podName, container), &keyboard)
 
@@ -213,9 +215,10 @@ func (h *ExecHandler) startInteractiveSession(
 		session.ClearExecMode()
 
 		if err != nil && execCtx.Err() == nil {
-			h.bot.SendText(chatID, fmt.Sprintf("❌ Exec session ended with error: %s", err))
+			h.bot.SendText(chatID, formatters.Btn(formatters.GlyphBroken,
+				fmt.Sprintf("Exec session ended with error: %s", err)))
 		} else {
-			h.bot.SendText(chatID, "👋 Exec session ended")
+			h.bot.SendText(chatID, "Exec session ended")
 		}
 	}()
 
@@ -248,12 +251,13 @@ func (h *ExecHandler) executeCommand(
 	errOutput := stderr.String()
 
 	if err != nil {
-		h.sendResponse(msg.Chat.ID, fmt.Sprintf("❌ Command failed: %s\n%s", err, errOutput))
+		h.sendResponse(msg.Chat.ID, formatters.Btn(formatters.GlyphBroken,
+			fmt.Sprintf("Command failed: %s\n%s", err, errOutput)))
 		return nil
 	}
 
 	if output == "" && errOutput == "" {
-		h.sendResponse(msg.Chat.ID, "✅ Command executed successfully (no output)")
+		h.sendResponse(msg.Chat.ID, formatters.Btn(formatters.GlyphDone, "Command executed successfully (no output)"))
 		return nil
 	}
 
@@ -267,14 +271,14 @@ func (h *ExecHandler) executeCommand(
 
 	// Same fence-in-HTML issue as logs: send a real code block instead.
 	rich := tg.NewRichDoc()
-	rich.Heading(3, "🖥️ "+strings.Join(command, " "))
+	rich.Heading(3, strings.Join(command, " "))
 	if result == "" {
 		rich.Paragraph("(no output)")
 	} else {
 		rich.Code("", result)
 	}
 	h.bot.SendRich(msg.Chat.ID, rich.String(),
-		fmt.Sprintf("🖥️ Command: %s\n%s", strings.Join(command, " "), result))
+		fmt.Sprintf("Command: %s\n%s", strings.Join(command, " "), result))
 	return nil
 }
 
@@ -293,14 +297,14 @@ func (h *ExecHandler) HandleExecInput(ctx context.Context, msg *tg.Message, sess
 	if text == "/exit" || text == "exit" {
 		execSession.Cancel()
 		execSession.StdinWrite.Close()
-		h.sendResponse(chatID, "👋 Exiting exec session...")
+		h.sendResponse(chatID, "Exiting exec session...")
 		return
 	}
 
 	// Send command to stdin
 	_, err := execSession.StdinWrite.Write([]byte(text + "\n"))
 	if err != nil {
-		h.sendResponse(chatID, fmt.Sprintf("❌ Failed to send command: %s", err))
+		h.sendResponse(chatID, formatters.Btn(formatters.GlyphBroken, fmt.Sprintf("Failed to send command: %s", err)))
 	}
 }
 

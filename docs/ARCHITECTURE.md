@@ -149,6 +149,65 @@ invariant's violation was the original sixteen dead buttons: rendered, never
 dispatched, replying "that action is not available yet" — a defect
 indistinguishable from a working button until someone tapped it.
 
+### One pane: a callback edits, it never sends
+
+`bot/pane.go` holds the rule that every callback path obeys: **a button tap edits
+the message the button lives on.** Sending is reserved for entry points the user
+initiates by typing, where there is no pane to edit yet.
+
+```go
+func (b *Bot) showPane(ctx context.Context, chatID int64, messageID int, p pane) {
+    if messageID == 0 {          // no pane yet: a typed command
+        b.SendRichKeyboard(chatID, p.rich, p.fallback, p.kb)
+        return
+    }
+    b.editRichView(ctx, chatID, messageID, p.rich, p.fallback, p.kb)
+}
+```
+
+Navigation already worked this way. Verbs did not: each called `SendRich` or
+`SendMessage`, so tapping four of them left five messages in the chat, only one
+carrying a keyboard, and pushed the menu several screens above where the user was
+reading. Every verb now renders through `showVerbResult`, which attaches
+`GetVerbResultKeyboard` — back to the resource, out to its list, home — so no
+view is a dead end.
+
+Three consequences are load-bearing:
+
+- **Verb handlers cannot delegate to command handlers.** Those send. `describe`
+  used to call the `/describe` handler to keep one implementation; the shared
+  piece is now the *renderer* (`formatters.RichResource`), which is what actually
+  guarantees the menu and the command agree.
+- **A pane must fit one message.** `truncateForPane` cuts to `paneLimit` (3500 —
+  under Telegram's 4096 to leave room for markup and the keyboard) on a rune
+  boundary, and states that it truncated. Telegram rejects an oversized edit
+  outright, which would leave the user looking at stale content.
+- **Mutating verbs re-read rather than assert.** Cordon, scale and restart
+  re-render the detail pane from a fresh API read, so the reported state is the
+  cluster's. Under dry run they say nothing changed instead of re-rendering an
+  unchanged pane that would read as success.
+
+Tests pin all of this: `TestNoCallbackSendsANewMessage` walks every reachable
+callback and fails on any `sendMessage`/`sendRichMessage`,
+`TestEveryVerbPaneCarriesAKeyboard` fails on output with no way out, and
+`TestPaneBodyFitsOneMessage` renders an oversized manifest.
+
+### One symbol vocabulary
+
+`formatters/symbols.go` declares every glyph the bot renders, and
+`formatters.Btn` is the only place button text is assembled. The glyphs are
+text-presentation Unicode, not emoji, for two reasons: emoji render at ~2 columns
+from a colour font, which breaks the column arithmetic the fixed-width tables in
+`formatters.go` depend on; and the interface previously mixed both vocabularies
+with no rule, so a marker could not be read, only guessed at.
+
+`TestNoEmojiInSource` walks the tree and fails on any emoji in a `.go` file. Its
+range table is the Unicode `Emoji_Presentation=Yes` set rather than whole blocks
+— U+2713 CHECK MARK is text-presentation and used by the vocabulary, while
+U+2705 in the same block is emoji and banned. Lines where an emoji is the subject
+under test (`displayWidth` must still measure cluster-supplied emoji correctly)
+are marked `emoji-ok` individually, not exempted by file.
+
 ### Rich Messages, with a fallback
 
 Bot API 10.1 added Rich Messages, which render real tables natively instead of
@@ -279,8 +338,9 @@ passed even with the container name dropped.
 1. Add the handler to `detailVerbs` in `internal/bot/detail.go`.
 2. Render a button for it in `menus.MenuBuilder.kindActionRows`, built with
    `act(verb)` so the callback shape stays correct.
-3. Describe it in `formatters.RichHelpForResource` so the pane's ❓ Help
-   explains it.
+3. Describe it in `formatters.RichHelpForResource` so the pane's Help button
+   explains it. Build the label with `formatters.Btn`, the same way the
+   keyboard does, so help names the button the user is looking at.
 
 The reachability tests will fail if you add a button with no handler, or a
 handler with no button.

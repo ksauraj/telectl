@@ -11,8 +11,8 @@ func TestRichTableIsGFM(t *testing.T) {
 	d.Table(
 		[]string{"NAME", "STATUS"},
 		[][]string{
-			{"nginx-1", "🟢 Running"},
-			{"redis-1", "🔴 CrashLoopBackOff"},
+			{"nginx-1", "🟢 Running"},          // emoji-ok: cell contents pass through verbatim
+			{"redis-1", "🔴 CrashLoopBackOff"}, // emoji-ok
 		},
 		TableOpts{Align: []string{"left", "center"}},
 	)
@@ -21,8 +21,8 @@ func TestRichTableIsGFM(t *testing.T) {
 	for _, want := range []string{
 		"### Pods",
 		"| NAME | STATUS |",
-		"| nginx-1 | 🟢 Running |",
-		":---:", // center alignment marker
+		"| nginx-1 | 🟢 Running |", // emoji-ok
+		":---:",                   // center alignment marker
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)

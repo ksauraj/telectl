@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	f "github.com/ksauraj/telectl/internal/utils/formatters"
 )
 
 func TestNamespaceKeyboardMarksCurrent(t *testing.T) {
@@ -19,26 +21,26 @@ func TestNamespaceKeyboardMarksCurrent(t *testing.T) {
 	}
 	joined := strings.Join(labels, " | ")
 
-	if !strings.Contains(joined, "✅ kube-system") {
+	if !strings.Contains(joined, f.Btn(f.GlyphSelected, "kube-system")) {
 		t.Errorf("current namespace not marked: %s", joined)
 	}
-	if strings.Contains(joined, "✅ default") {
+	if strings.Contains(joined, f.Btn(f.GlyphSelected, "default")) {
 		t.Errorf("non-current namespace marked: %s", joined)
 	}
-	if !strings.Contains(joined, "All Namespaces") {
+	if !strings.Contains(joined, "All namespaces") {
 		t.Errorf("missing all-namespaces option: %s", joined)
 	}
 }
 
-// With no namespace set, "All Namespaces" is the active choice.
+// With no namespace set, "All namespaces" is the active choice.
 func TestNamespaceKeyboardMarksAllWhenEmpty(t *testing.T) {
 	mb := &MenuBuilder{config: testConfig(), tokens: NewTokenStore(4096)}
 	kb := mb.GetNamespaceInlineKeyboard([]string{"default"}, "", 0, "")
 
 	for _, row := range kb.InlineKeyboard {
 		for _, b := range row {
-			if strings.Contains(b.Text, "All Namespaces") {
-				if !strings.Contains(b.Text, "✅") {
+			if strings.Contains(b.Text, "All namespaces") {
+				if !strings.Contains(b.Text, f.GlyphSelected) {
 					t.Errorf("all-namespaces should be marked active, got %q", b.Text)
 				}
 				return

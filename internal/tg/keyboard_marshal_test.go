@@ -12,7 +12,7 @@ import (
 func TestInlineKeyboardMarshalsSnakeCase(t *testing.T) {
 	kb := InlineKeyboard(
 		InlineKeyboardRow(
-			InlineButtonData("📦 Pods", "menu:resource:pods"),
+			InlineButtonData("▸ Pods", "menu:resource:pods"),
 			InlineButtonURL("Docs", "https://example.com"),
 		),
 	)
@@ -39,7 +39,7 @@ func TestInlineKeyboardMarshalsSnakeCase(t *testing.T) {
 	if decoded.InlineKeyboard[0][0].CallbackData != "menu:resource:pods" {
 		t.Errorf("callback_data lost: %s", got)
 	}
-	if decoded.InlineKeyboard[0][0].Text != "📦 Pods" {
+	if decoded.InlineKeyboard[0][0].Text != "▸ Pods" {
 		t.Errorf("text lost: %s", got)
 	}
 	if decoded.InlineKeyboard[0][1].URL != "https://example.com" {
@@ -48,7 +48,7 @@ func TestInlineKeyboardMarshalsSnakeCase(t *testing.T) {
 }
 
 func TestReplyKeyboardMarshalsSnakeCase(t *testing.T) {
-	rk := ReplyKeyboard(KeyboardButtonRow(KeyboardButtonText("📦 Resources")))
+	rk := ReplyKeyboard(KeyboardButtonRow(KeyboardButtonText("▸ Resources")))
 	rk.ResizeKeyboard = true
 	rk.InputFieldPlaceholder = "pick one"
 
@@ -67,7 +67,7 @@ func TestReplyKeyboardMarshalsSnakeCase(t *testing.T) {
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if len(decoded.Keyboard) != 1 || decoded.Keyboard[0][0].Text != "📦 Resources" {
+	if len(decoded.Keyboard) != 1 || decoded.Keyboard[0][0].Text != "▸ Resources" {
 		t.Fatalf("keyboard button lost: %s", raw)
 	}
 	if !decoded.ResizeKeyboard {

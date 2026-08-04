@@ -40,8 +40,8 @@ func TestRichResourceListRendersTable(t *testing.T) {
 		"### Pods — 2 item(s)",
 		"| NAME | NAMESPACE | READY | STATUS | RESTARTS | AGE |",
 		"nginx-1", "kube-system",
-		"🟢", // Running
-		"🔴", // CrashLoopBackOff
+		GlyphHealthy, // Running
+		GlyphBroken,  // CrashLoopBackOff
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
@@ -95,11 +95,11 @@ func TestRichResourceUsesCollapsibleSections(t *testing.T) {
 	got := RichResource(&r, false)
 
 	for _, want := range []string{
-		"### 🟢 nginx-1",
+		"### " + GlyphHealthy + " nginx-1",
 		"| Field | Value |",
 		"<details>",
-		"<summary>🏷️ Labels (2)</summary>",
-		"<summary>📝 Annotations (1)</summary>",
+		"<summary>Labels (2)</summary>",
+		"<summary>Annotations (1)</summary>",
 		"| app | nginx |",
 	} {
 		if !strings.Contains(got, want) {
@@ -135,7 +135,7 @@ func TestRichContextsMarksCurrent(t *testing.T) {
 		NewKubeContext("prod", "prod-cluster", "apps", false),
 	})
 
-	if !strings.Contains(got, "✅") {
+	if !strings.Contains(got, GlyphSelected) {
 		t.Errorf("current context not marked:\n%s", got)
 	}
 	for _, want := range []string{"minikube", "prod-cluster", "| Name | Cluster | Namespace |"} {
@@ -154,7 +154,7 @@ func TestRichMetricsPodShape(t *testing.T) {
 			},
 		},
 	}
-	got := RichMetrics("📊 Pod Resource Usage", []k8s.ResourceInfo{m})
+	got := RichMetrics("Pod Resource Usage", []k8s.ResourceInfo{m})
 
 	for _, want := range []string{"| NAME | NAMESPACE | CPU | MEMORY |", "12m", "40Mi", "nginx-1"} {
 		if !strings.Contains(got, want) {
@@ -170,7 +170,7 @@ func TestRichMetricsNodeShape(t *testing.T) {
 			"usage": map[string]interface{}{"cpu": "250m", "memory": "1Gi"},
 		},
 	}
-	got := RichMetrics("📊 Node Resource Usage", []k8s.ResourceInfo{m})
+	got := RichMetrics("Node Resource Usage", []k8s.ResourceInfo{m})
 
 	if strings.Contains(got, "NAMESPACE") {
 		t.Errorf("node metrics should omit NAMESPACE:\n%s", got)
@@ -206,8 +206,8 @@ func TestRichLogsUsesCodeBlock(t *testing.T) {
 }
 
 func TestRichKeyValue(t *testing.T) {
-	got := RichKeyValue("⚙️ Config", [][2]string{{"Dry Run", "false"}, {"Rate Limit", "30/min"}})
-	for _, want := range []string{"### ⚙️ Config", "Dry Run", "30/min"} {
+	got := RichKeyValue("Config", [][2]string{{"Dry Run", "false"}, {"Rate Limit", "30/min"}})
+	for _, want := range []string{"### Config", "Dry Run", "30/min"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
 		}

@@ -209,7 +209,7 @@ func TestUpdateRoutingReachesHandlers(t *testing.T) {
 		// Commands that need a live cluster (/version, /get, /top) are covered by
 		// the handler tests; these are the cluster-independent routing paths.
 		{"start shows main menu", textMessage("/start", 7), "telectl"},
-		{"help renders reference", textMessage("/help", 7), "Command Reference"},
+		{"help renders reference", textMessage("/help", 7), "command reference"},
 		{"unknown command is reported", textMessage("/definitelynotacommand", 7), "Unknown command"},
 		{"plain text falls back to menu", textMessage("hello there", 7), "telectl"},
 	}
@@ -244,7 +244,7 @@ func TestHelpIsValidHTML(t *testing.T) {
 	var helpCall *recordedCall
 	for _, c := range fake.sent() {
 		if c.Method == "sendMessage" {
-			if s, ok := c.Body["text"].(string); ok && strings.Contains(s, "Command Reference") {
+			if s, ok := c.Body["text"].(string); ok && strings.Contains(s, "command reference") {
 				cc := c
 				helpCall = &cc
 				break

@@ -15,6 +15,10 @@ binary to ship in the container image.
 Namespaces, Nodes, ConfigMaps, Secrets, PVCs, PVs, Ingresses with pagination.
 Each resource opens a detail pane with context-aware action buttons.
 
+**One pane, not a message pile** — every tap redraws a single message instead of
+posting a new one, so the keyboard stays where you left it and the chat does not
+fill up as you browse. Every view has a route back.
+
 **Per-resource actions** — Describe, Labels, Selector, Endpoints, Rollout
 history, Pods (for workloads), Logs, Exec, Scale, Cordon/Uncordon, Drain,
 Restart, Delete. Every button is wired; none silently does nothing.
@@ -114,7 +118,8 @@ docker run --rm -it \
 ### Menu navigation
 
 Send `/start` to open the main menu. Everything is reachable by tapping
-buttons — no command syntax required. See
+buttons — no command syntax required. Taps edit the pane in place; use the typed
+command when you want output that stays in the chat history. See
 [docs/MENU_GUIDE.md](docs/MENU_GUIDE.md) for the full walkthrough and
 [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the complete configuration reference.
 
@@ -202,6 +207,7 @@ Telegram user
      ▼
   bot.Bot             ← update routing, session management, rate limiting
   ├── handlers/       ← typed command implementations (/get, /logs, /exec, …)
+  ├── bot/pane.go     ← the single pane: every callback edits, never sends
   ├── bot/detail.go   ← per-resource detail pane and its 25 action verbs
   └── menus/          ← keyboard builders and callback data protocol
      │
@@ -229,6 +235,17 @@ declared as a field table in `menus/menus.go`. The dispatcher reads from the
 same table. A test walks every button every keyboard can render and asserts
 each verb has a handler — the invariant whose violation caused the original
 sixteen dead buttons.
+
+**A callback edits; it never sends.** All button output renders into the message
+the button lives on (`bot/pane.go`), and a test fails the build if any callback
+path posts a new message. The tradeoff is deliberate: pane output is transient
+and must fit one message, so long content is truncated with a pointer to the
+command that prints it whole.
+
+**One symbol vocabulary.** Status and action markers are text-presentation
+Unicode declared in `formatters/symbols.go` — no emoji anywhere, enforced by a
+test. Emoji render two columns wide, which breaks the alignment arithmetic the
+fixed-width tables depend on.
 
 **Context switching is session-scoped.** Switching context rebuilds the API
 clients in memory but does not rewrite `~/.kube/config`. Two operators on the
@@ -303,7 +320,8 @@ internal/
 ├── types/
 │   └── types.go         # ResourceMap (alias → GVR), UserSession, RateLimiter
 └── utils/formatters/
-    ├── formatters.go    # table rendering, status emoji, TruncateString
+    ├── symbols.go       # the glyph vocabulary; Btn builds every button label
+    ├── formatters.go    # table rendering, status glyphs, TruncateString
     ├── rich.go          # RichDoc builder (headings, tables, code, details)
     └── richdetail.go    # per-resource rich renderers (drain result, rollout, …)
 

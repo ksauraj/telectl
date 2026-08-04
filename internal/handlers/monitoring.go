@@ -66,8 +66,8 @@ func (h *TopHandler) topPods(
 		}
 
 		h.bot.SendRich(msg.Chat.ID,
-			"> ⚠️ metrics-server not available — showing the pod list instead.\n\n"+formatters.RichResourceList(pods, true),
-			fmt.Sprintf("⚠️ Metrics server not available. Showing pod list instead:\n\n%s",
+			metricsFallbackNote("pod")+formatters.RichResourceList(pods, true),
+			fmt.Sprintf("Metrics server not available. Showing pod list instead:\n\n%s",
 				formatters.FormatResourceList(pods, formatWide, true)))
 		return nil
 	}
@@ -81,8 +81,8 @@ func (h *TopHandler) topPods(
 	}
 
 	h.bot.SendRich(msg.Chat.ID,
-		formatters.RichMetrics(fmt.Sprintf("📊 Pod Resource Usage (sorted by %s)", sortBy), resources),
-		fmt.Sprintf("📊 Pod Resource Usage (%s):\n%s", sortBy, formatters.FormatResourceList(resources, "wide", true)))
+		formatters.RichMetrics(fmt.Sprintf("Pod Resource Usage (sorted by %s)", sortBy), resources),
+		fmt.Sprintf("Pod Resource Usage (%s):\n%s", sortBy, formatters.FormatResourceList(resources, "wide", true)))
 	return nil
 }
 
@@ -99,20 +99,27 @@ func (h *TopHandler) topNodes(ctx context.Context, msg *tg.Message, client *k8s.
 			return err
 		}
 		h.bot.SendRich(msg.Chat.ID,
-			"> ⚠️ metrics-server not available — showing the node list instead.\n\n"+formatters.RichResourceList(nodes, true),
-			fmt.Sprintf("⚠️ Metrics server not available. Showing node list:\n\n%s",
+			metricsFallbackNote("node")+formatters.RichResourceList(nodes, true),
+			fmt.Sprintf("Metrics server not available. Showing node list:\n\n%s",
 				formatters.FormatResourceList(nodes, formatWide, true)))
 		return nil
 	}
 
 	h.bot.SendRich(msg.Chat.ID,
-		formatters.RichMetrics("📊 Node Resource Usage", resources),
-		fmt.Sprintf("📊 Node Resource Usage:\n%s", formatters.FormatResourceList(resources, "wide", true)))
+		formatters.RichMetrics("Node Resource Usage", resources),
+		fmt.Sprintf("Node Resource Usage:\n%s", formatters.FormatResourceList(resources, "wide", true)))
 	return nil
 }
 
 func (h *TopHandler) sendResponse(chatID int64, text string) {
 	h.bot.SendLongMessage(chatID, text)
+}
+
+// metricsFallbackNote heads the list shown when metrics-server is absent, so
+// the reader knows they are looking at a plain list rather than usage figures.
+func metricsFallbackNote(kind string) string {
+	return "> " + formatters.GlyphWaiting +
+		" metrics-server not available — showing the " + kind + " list instead.\n\n"
 }
 
 type EventsHandler struct {
@@ -133,13 +140,13 @@ func (h *EventsHandler) Handle(ctx context.Context, msg *tg.Message, args []stri
 	}
 
 	if len(events) == 0 {
-		h.sendResponse(msg.Chat.ID, fmt.Sprintf("📭 No events in namespace %s", namespace))
+		h.sendResponse(msg.Chat.ID, fmt.Sprintf("No events in namespace %s", namespace))
 		return nil
 	}
 
 	h.bot.SendRich(msg.Chat.ID,
 		formatters.RichEvents(events),
-		fmt.Sprintf("📅 Events in %s:\n%s", namespace, formatters.FormatResourceList(events, "wide", true)))
+		fmt.Sprintf("Events in %s:\n%s", namespace, formatters.FormatResourceList(events, "wide", true)))
 	return nil
 }
 
@@ -183,7 +190,7 @@ func (h *WatchHandler) Handle(ctx context.Context, msg *tg.Message, args []strin
 		return fmt.Errorf("failed to start watch: %w", err)
 	}
 
-	h.sendResponse(msg.Chat.ID, fmt.Sprintf("👀 Watching %s in %s... (Press /cancel to stop)", gvr.Resource, namespace))
+	h.sendResponse(msg.Chat.ID, fmt.Sprintf("Watching %s in %s... (Press /cancel to stop)", gvr.Resource, namespace))
 
 	go func() {
 		for event := range watcher.ResultChan() {

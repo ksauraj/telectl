@@ -16,6 +16,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynfake "k8s.io/client-go/dynamic/fake"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
@@ -53,12 +54,27 @@ func detailBot(t *testing.T, objs ...runtime.Object) (*Bot, *bottg.Bot, *fakeTel
 
 	b.k8sClient = k8s.NewClientForTest(
 		cs,
-		dynfake.NewSimpleDynamicClient(scheme, objs...),
+		dynfake.NewSimpleDynamicClientWithCustomListKinds(scheme, metricsListKinds(), objs...),
 		zaptest.NewLogger(t, zaptest.Level(zap.DebugLevel)),
 		false,
 	)
 	b.registerUpdateHandlers(lib)
 	return b, lib, fake
+}
+
+// metricsListKinds registers the metrics.k8s.io list kinds with the dynamic
+// fake.
+//
+// metrics.k8s.io types are not in any client-go scheme — they come from an
+// aggregated API server — so the fake has no list kind for them and panics
+// outright on a LIST rather than returning an error. The Monitoring pane lists
+// them, so without this the test that walks every callback dies in the fake
+// instead of exercising the code.
+func metricsListKinds() map[schema.GroupVersionResource]string {
+	return map[schema.GroupVersionResource]string{
+		{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "pods"}:  "PodMetricsList",
+		{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "nodes"}: "NodeMetricsList",
+	}
 }
 
 // installScaleReactors teaches the fake clientset about the scale subresource.

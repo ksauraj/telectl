@@ -275,8 +275,9 @@ drain.
 `kubernetes.dry_run: true` (or `--dry-run`) makes every mutating operation log
 what it would have done and return success without calling the API. Useful for
 confirming what the bot would do before granting write access. The chat replies
-say so explicitly (`🧪 Dry run — nothing was changed`), so it is not mistaken
-for a real change.
+say so explicitly — a dry-run cordon or scale reports that nothing was
+changed, rather than re-rendering an unchanged pane that would look like the
+change took effect.
 
 ### Context switching does not touch your kubeconfig
 

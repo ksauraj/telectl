@@ -46,39 +46,28 @@ func EscapeHTML(s string) string {
 	return s
 }
 
-// Status glyphs. Named so the "which statuses are bad" grouping below is
-// explicit rather than three separate copies of the same emoji.
-const (
-	emojiHealthy  = "🟢"
-	emojiDone     = "⚫"
-	emojiWaiting  = "🟡"
-	emojiBroken   = "🔴"
-	emojiStopping = "🟠"
-	emojiUnknown  = "❓"
-	emojiNeutral  = "•"
-)
-
-// StatusEmoji returns an emoji representing a Kubernetes resource status.
+// StatusGlyph returns the one-column marker for a Kubernetes resource status.
+// The glyphs themselves are declared in symbols.go.
 //
 // An unrecognised status falls back to the neutral glyph rather than an empty
 // string: a missing leading character silently shifts every column of the
 // fixed-width tables.
-func StatusEmoji(status string) string {
+func StatusGlyph(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "running", "active", "ready", "bound", "available":
-		return emojiHealthy
+		return GlyphHealthy
 	case "succeeded", "completed":
-		return emojiDone
+		return GlyphDone
 	case "pending", "creating", "containercreating", "progressing":
-		return emojiWaiting
+		return GlyphWaiting
 	case "failed", "crashloopbackoff", "error":
-		return emojiBroken
+		return GlyphBroken
 	case "terminating":
-		return emojiStopping
+		return GlyphStopping
 	case "unknown":
-		return emojiUnknown
+		return GlyphUnknown
 	default:
-		return emojiNeutral
+		return GlyphNeutral
 	}
 }
 
@@ -161,7 +150,7 @@ func formatYAML(resource *k8s.ResourceInfo) string {
 // resource-aware table (the pretty k9s-style output the user wants).
 func FormatResourceList(resources []k8s.ResourceInfo, format string, wide bool) string {
 	if len(resources) == 0 {
-		return "📭 No resources found"
+		return "No resources found"
 	}
 
 	switch format {
@@ -247,7 +236,7 @@ func writeRow(sb *strings.Builder, cells []string, widths []int) {
 // with resource-specific columns and status emojis.
 func formatResourceListTable(resources []k8s.ResourceInfo, wide bool) string {
 	if len(resources) == 0 {
-		return "📭 No resources found"
+		return "No resources found"
 	}
 
 	kind := resources[0].Kind
@@ -316,7 +305,7 @@ var (
 	colNamespace = tableColumn{"NAMESPACE", func(r *k8s.ResourceInfo) string { return r.Namespace }}
 	colAge       = tableColumn{"AGE", func(r *k8s.ResourceInfo) string { return formatAge(r.CreatedAt.Time) }}
 	colStatus    = tableColumn{"STATUS", func(r *k8s.ResourceInfo) string {
-		return StatusEmoji(r.Status) + " " + emptyToDash(r.Status)
+		return StatusGlyph(r.Status) + " " + emptyToDash(r.Status)
 	}}
 )
 
@@ -380,7 +369,7 @@ var kindColumns = map[string][]tableColumn{
 		colAge,
 	},
 	"Event": {
-		{"TYPE", func(r *k8s.ResourceInfo) string { return eventTypeEmoji(r) + " " + eventType(r) }},
+		{"TYPE", func(r *k8s.ResourceInfo) string { return eventTypeGlyph(r) + " " + eventType(r) }},
 		{"REASON", eventReason},
 		{"OBJECT", eventObject},
 		{"MESSAGE", func(r *k8s.ResourceInfo) string { return TruncateString(eventMessage(r), 60) }},
@@ -788,12 +777,11 @@ func eventType(r *k8s.ResourceInfo) string {
 	return emptyToDash(getString(r.Details, "type"))
 }
 
-func eventTypeEmoji(r *k8s.ResourceInfo) string {
-	t := getString(r.Details, "type")
-	if t == "Warning" {
-		return "🟠"
+func eventTypeGlyph(r *k8s.ResourceInfo) string {
+	if getString(r.Details, "type") == "Warning" {
+		return GlyphBroken
 	}
-	return "🟢"
+	return GlyphHealthy
 }
 
 func eventReason(r *k8s.ResourceInfo) string {

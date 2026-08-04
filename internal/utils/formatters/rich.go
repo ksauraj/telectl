@@ -19,7 +19,7 @@ import (
 func RichResourceList(resources []k8s.ResourceInfo, wide bool) string {
 	d := tg.NewRichDoc()
 	if len(resources) == 0 {
-		d.Paragraph("📭 No resources found")
+		d.Paragraph("No resources found")
 		return d.String()
 	}
 
@@ -52,11 +52,11 @@ func RichResourceList(resources []k8s.ResourceInfo, wide bool) string {
 func RichResource(resource *k8s.ResourceInfo, wide bool) string {
 	d := tg.NewRichDoc()
 	if resource == nil {
-		d.Paragraph("📭 Resource not found")
+		d.Paragraph("Resource not found")
 		return d.String()
 	}
 
-	d.Heading(3, fmt.Sprintf("%s %s", StatusEmoji(resource.Status), resource.Name))
+	d.Heading(3, fmt.Sprintf("%s %s", StatusGlyph(resource.Status), resource.Name))
 
 	pairs := [][2]string{
 		{"Kind", emptyToDash(resource.Kind)},
@@ -73,11 +73,11 @@ func RichResource(resource *k8s.ResourceInfo, wide bool) string {
 	d.KeyValue(pairs)
 
 	if len(resource.Labels) > 0 {
-		d.Details(fmt.Sprintf("🏷️ Labels (%d)", len(resource.Labels)),
+		d.Details(fmt.Sprintf("Labels (%d)", len(resource.Labels)),
 			mapTable("Label", resource.Labels))
 	}
 	if len(resource.Annotations) > 0 {
-		d.Details(fmt.Sprintf("📝 Annotations (%d)", len(resource.Annotations)),
+		d.Details(fmt.Sprintf("Annotations (%d)", len(resource.Annotations)),
 			mapTable("Annotation", resource.Annotations))
 	}
 	if wide && len(resource.Details) > 0 {
@@ -92,7 +92,7 @@ func RichResource(resource *k8s.ResourceInfo, wide bool) string {
 		}
 		inner := tg.NewRichDoc()
 		inner.Table([]string{"Field", "Value"}, rows, tg.TableOpts{})
-		d.Details("🔍 Details", inner.String())
+		d.Details("Details", inner.String())
 	}
 
 	return d.String()
@@ -119,16 +119,16 @@ func mapTable(keyHeader string, m map[string]string) string {
 func RichContexts(contexts []KubeContext) string {
 	d := tg.NewRichDoc()
 	if len(contexts) == 0 {
-		d.Paragraph("📭 No contexts found in kubeconfig")
+		d.Paragraph("No contexts found in kubeconfig")
 		return d.String()
 	}
 
-	d.Heading(3, fmt.Sprintf("🌐 Contexts — %d", len(contexts)))
+	d.Heading(3, fmt.Sprintf("Contexts — %d", len(contexts)))
 	rows := make([][]string, 0, len(contexts))
 	for _, c := range contexts {
 		marker := ""
 		if c.Current {
-			marker = "✅"
+			marker = GlyphSelected
 		}
 		rows = append(rows, []string{
 			marker, c.Name, emptyToDash(c.Cluster), emptyToDash(c.Namespace),
@@ -157,16 +157,16 @@ func NewKubeContext(name, cluster, namespace string, current bool) KubeContext {
 func RichEvents(events []k8s.ResourceInfo) string {
 	d := tg.NewRichDoc()
 	if len(events) == 0 {
-		d.Paragraph("📭 No events found")
+		d.Paragraph("No events found")
 		return d.String()
 	}
 
-	d.Heading(3, fmt.Sprintf("📅 Events — %d", len(events)))
+	d.Heading(3, fmt.Sprintf("Events — %d", len(events)))
 	rows := make([][]string, 0, len(events))
 	for i := range events {
 		e := &events[i]
 		rows = append(rows, []string{
-			eventTypeEmoji(e) + " " + eventType(e),
+			eventTypeGlyph(e) + " " + eventType(e),
 			eventReason(e),
 			eventObject(e),
 			truncate(eventMessage(e), 120),
@@ -192,7 +192,7 @@ func RichKeyValue(heading string, pairs [][2]string) string {
 func RichLogs(podName, container, logs string) string {
 	d := tg.NewRichDoc()
 	// Avoid [] here: the heading is escaped, so brackets would render as \[..\].
-	title := "📋 Logs: " + podName
+	title := "Logs: " + podName
 	if container != "" {
 		title += " · " + container
 	}
@@ -212,7 +212,7 @@ func RichLogs(podName, container, logs string) string {
 func RichMetrics(heading string, metrics []k8s.ResourceInfo) string {
 	d := tg.NewRichDoc()
 	if len(metrics) == 0 {
-		d.Paragraph("📭 No metrics available")
+		d.Paragraph("No metrics available")
 		return d.String()
 	}
 

@@ -23,11 +23,11 @@ import (
 func RichResourceSummary(r *k8s.ResourceInfo) string {
 	d := tg.NewRichDoc()
 	if r == nil {
-		d.Paragraph("📭 Resource not found")
+		d.Paragraph("Resource not found")
 		return d.String()
 	}
 
-	d.Heading(3, fmt.Sprintf("%s %s", StatusEmoji(r.Status), r.Name))
+	d.Heading(3, fmt.Sprintf("%s %s", StatusGlyph(r.Status), r.Name))
 
 	pairs := [][2]string{{"Kind", emptyToDash(r.Kind)}}
 	if r.Namespace != "" {
@@ -93,11 +93,11 @@ func nodeSchedulableLabel(r *k8s.ResourceInfo) string {
 func RichLabels(r *k8s.ResourceInfo) string {
 	d := tg.NewRichDoc()
 	if r == nil {
-		d.Paragraph("📭 Resource not found")
+		d.Paragraph("Resource not found")
 		return d.String()
 	}
 
-	d.Heading(3, "🏷️ "+r.Name)
+	d.Heading(3, r.Name)
 
 	if len(r.Labels) == 0 {
 		d.Paragraph("No labels.")
@@ -106,7 +106,7 @@ func RichLabels(r *k8s.ResourceInfo) string {
 	}
 
 	if len(r.Annotations) > 0 {
-		d.Details(fmt.Sprintf("📝 Annotations (%d)", len(r.Annotations)),
+		d.Details(fmt.Sprintf("Annotations (%d)", len(r.Annotations)),
 			mapTable("Annotation", r.Annotations))
 	}
 	return d.String()
@@ -117,11 +117,11 @@ func RichLabels(r *k8s.ResourceInfo) string {
 func RichSelector(r *k8s.ResourceInfo, selector string, pods []k8s.ResourceInfo) string {
 	d := tg.NewRichDoc()
 	if r == nil {
-		d.Paragraph("📭 Resource not found")
+		d.Paragraph("Resource not found")
 		return d.String()
 	}
 
-	d.Heading(3, "🎯 Selector — "+r.Name)
+	d.Heading(3, "Selector — "+r.Name)
 	if selector == "" {
 		d.Paragraph("This resource has no pod selector.")
 		return d.String()
@@ -129,7 +129,7 @@ func RichSelector(r *k8s.ResourceInfo, selector string, pods []k8s.ResourceInfo)
 	d.Code("", selector)
 
 	if len(pods) == 0 {
-		d.Paragraph("⚠️ The selector currently matches no pods.")
+		d.Paragraph(Btn(GlyphDestructive, "The selector currently matches no pods."))
 		return d.String()
 	}
 	d.Paragraph(fmt.Sprintf("Matches %d pod(s):", len(pods)))
@@ -142,21 +142,22 @@ func RichSelector(r *k8s.ResourceInfo, selector string, pods []k8s.ResourceInfo)
 // a list view but serves no traffic.
 func RichEndpoints(serviceName string, ready, notReady []string) string {
 	d := tg.NewRichDoc()
-	d.Heading(3, "🔌 Endpoints — "+serviceName)
+	d.Heading(3, "Endpoints — "+serviceName)
 
 	if len(ready) == 0 && len(notReady) == 0 {
-		d.Paragraph("⚠️ No endpoints. Nothing is backing this service — check the selector and pod readiness.")
+		d.Paragraph(Btn(GlyphDestructive,
+			"No endpoints. Nothing is backing this service — check the selector and pod readiness."))
 		return d.String()
 	}
 
 	if len(ready) > 0 {
-		d.Paragraph(fmt.Sprintf("✅ Ready (%d)", len(ready)))
+		d.Paragraph(fmt.Sprintf("Ready (%d)", len(ready)))
 		d.List(ready)
 	} else {
-		d.Paragraph("⚠️ No ready endpoints.")
+		d.Paragraph(Btn(GlyphDestructive, "No ready endpoints."))
 	}
 	if len(notReady) > 0 {
-		d.Paragraph(fmt.Sprintf("🔴 Not ready (%d)", len(notReady)))
+		d.Paragraph(fmt.Sprintf("Not ready (%d)", len(notReady)))
 		d.List(notReady)
 	}
 	return d.String()
@@ -165,7 +166,7 @@ func RichEndpoints(serviceName string, ready, notReady []string) string {
 // RichRolloutHistory renders a deployment's revisions, newest first.
 func RichRolloutHistory(name string, revisions []k8s.Revision) string {
 	d := tg.NewRichDoc()
-	d.Heading(3, "📜 Rollout history — "+name)
+	d.Heading(3, "Rollout history — "+name)
 
 	if len(revisions) == 0 {
 		d.Paragraph("No revisions found. The deployment may have been created without any rollout yet.")
@@ -176,7 +177,7 @@ func RichRolloutHistory(name string, revisions []k8s.Revision) string {
 	for _, rev := range revisions {
 		marker := ""
 		if rev.Current {
-			marker = "✅"
+			marker = GlyphSelected
 		}
 		rows = append(rows, []string{
 			marker,
@@ -208,7 +209,7 @@ func RichRolloutHistory(name string, revisions []k8s.Revision) string {
 // a drain that silently skipped half the node would be worse than no drain.
 func RichDrainResult(node string, res *k8s.DrainResult) string {
 	d := tg.NewRichDoc()
-	d.Heading(3, "💤 Drain — "+node)
+	d.Heading(3, "Drain — "+node)
 
 	if res == nil {
 		d.Paragraph("No result returned.")
@@ -224,7 +225,7 @@ func RichDrainResult(node string, res *k8s.DrainResult) string {
 	d.KeyValue(pairs)
 
 	if len(res.Evicted) > 0 {
-		d.Details(fmt.Sprintf("✅ Evicted (%d)", len(res.Evicted)), listDoc(res.Evicted))
+		d.Details(fmt.Sprintf("Evicted (%d)", len(res.Evicted)), listDoc(res.Evicted))
 	}
 	if len(res.Skipped) > 0 {
 		rows := make([][]string, 0, len(res.Skipped))
@@ -233,7 +234,7 @@ func RichDrainResult(node string, res *k8s.DrainResult) string {
 		}
 		inner := tg.NewRichDoc()
 		inner.Table([]string{"POD", "REASON"}, rows, tg.TableOpts{})
-		d.Details(fmt.Sprintf("⏭️ Skipped (%d)", len(res.Skipped)), inner.String())
+		d.Details(fmt.Sprintf("Skipped (%d)", len(res.Skipped)), inner.String())
 	}
 	if len(res.Failed) > 0 {
 		rows := make([][]string, 0, len(res.Failed))
@@ -242,7 +243,7 @@ func RichDrainResult(node string, res *k8s.DrainResult) string {
 		}
 		inner := tg.NewRichDoc()
 		inner.Table([]string{"POD", "ERROR"}, rows, tg.TableOpts{})
-		d.Details(fmt.Sprintf("🔴 Failed (%d)", len(res.Failed)), inner.String())
+		d.Details(fmt.Sprintf("Failed (%d)", len(res.Failed)), inner.String())
 		d.Paragraph("Failures are usually a PodDisruptionBudget refusing the " +
 			"eviction. The node stays cordoned, so retrying is safe.")
 	}
@@ -255,11 +256,11 @@ func RichDrainResult(node string, res *k8s.DrainResult) string {
 func RichNamespaceSummary(s *k8s.NamespaceSummary) string {
 	d := tg.NewRichDoc()
 	if s == nil {
-		d.Paragraph("📭 No summary available")
+		d.Paragraph("No summary available")
 		return d.String()
 	}
 
-	d.Heading(3, "📋 Contents of "+s.Namespace)
+	d.Heading(3, "Contents of "+s.Namespace)
 
 	rows := make([][]string, 0, len(s.Counts))
 	var total int
@@ -290,7 +291,7 @@ func RichManifest(r *k8s.ResourceInfo, yamlText string) string {
 	if r != nil {
 		name = r.Name
 	}
-	d.Heading(3, "📄 Manifest — "+name)
+	d.Heading(3, "Manifest — "+name)
 	if yamlText == "" {
 		d.Paragraph("(empty)")
 		return d.String()
@@ -314,51 +315,60 @@ func RichActionResult(heading string, pairs [][2]string, note string) string {
 
 // RichHelpForResource explains what each button on a detail pane does, for the
 // kind currently open.
+//
+// The labels here are built with Btn and the same glyphs the keyboard builders
+// use, so the help text names the button the user is actually looking at. A
+// plain string here would drift from the keyboard the first time a marker
+// changed, and help that names a button that does not exist is worse than none.
 func RichHelpForResource(kind string) string {
 	d := tg.NewRichDoc()
-	d.Heading(3, "❓ Actions for "+kind)
+	d.Heading(3, "Actions for "+kind)
+
+	act := func(label string) string { return Btn(GlyphAction, label) }
+	danger := func(label string) string { return Btn(GlyphDestructive, label) }
 
 	common := [][]string{
-		{"📝 Describe", "Full object: spec, status, labels, annotations."},
-		{"🏷️ Labels", "Labels and annotations on their own."},
-		{"📅 Events", "Recent events naming this object — the first place to look when something is wrong."},
-		{"🗑️ Delete", "Asks for confirmation, then deletes."},
+		{act("Describe"), "Full object: spec, status, labels, annotations."},
+		{act("Labels"), "Labels and annotations on their own."},
+		{act("Events"), "Recent events naming this object — the first place to look when something is wrong."},
+		{danger("Delete"), "Asks for confirmation, then deletes."},
 	}
 	perKind := map[string][][]string{
 		"pods": {
-			{"📋 Logs", "Choose a tail size, follow, or the previous container's logs."},
-			{"🖥️ Exec", "Run a command in the pod."},
-			{"🔌 Forward", "Port-forward to the pod."},
-			{"🖥️ Node", "Jump to the node this pod runs on."},
+			{act("Logs"), "Choose a tail size, follow, or the previous container's logs."},
+			{act("Exec"), "Run a command in the pod."},
+			{act("Forward"), "Port-forward to the pod."},
+			{act("Node"), "Jump to the node this pod runs on."},
 		},
 		"deployments": {
-			{"🔄 Restart", "Rolling restart via a template annotation — no downtime for a healthy Deployment."},
-			{"📈 Scale", "Set the replica count."},
-			{"📋 Pods", "Pods this deployment currently owns."},
-			{"🎯 Selector", "The pod selector, and what it matches right now."},
-			{"📜 History", "Revisions, reconstructed from the owned ReplicaSets."},
-			{"📄 YAML", "The live manifest."},
+			{act("Restart"), "Rolling restart via a template annotation — no downtime for a healthy Deployment."},
+			{act("Scale"), "Set the replica count."},
+			{act("Pods"), "Pods this deployment currently owns."},
+			{act("Selector"), "The pod selector, and what it matches right now."},
+			{act("History"), "Revisions, reconstructed from the owned ReplicaSets."},
+			{act("YAML"), "The live manifest."},
 		},
 		"replicasets": {
-			{"📋 Pods", "Pods this ReplicaSet owns."},
-			{"📈 Scale", "Set the replica count. If a Deployment owns this ReplicaSet, its controller will undo the change."},
-			{"🎯 Selector", "The pod selector, and what it matches right now."},
+			{act("Pods"), "Pods this ReplicaSet owns."},
+			{act("Scale"), "Set the replica count. If a Deployment owns this ReplicaSet, " +
+				"its controller will undo the change."},
+			{act("Selector"), "The pod selector, and what it matches right now."},
 		},
 		"services": {
-			{"📋 Endpoints", "Backing addresses, split into ready and not-ready."},
-			{"🎯 Selector", "The pod selector, and what it matches right now."},
-			{"🔌 Forward", "Port-forward to the service."},
+			{act("Endpoints"), "Backing addresses, split into ready and not-ready."},
+			{act("Selector"), "The pod selector, and what it matches right now."},
+			{act("Forward"), "Port-forward to the service."},
 		},
 		"nodes": {
-			{"📊 Top", "CPU and memory usage (needs metrics-server)."},
-			{"📋 Pods", "Everything scheduled here, across all namespaces."},
-			{"🔧 Cordon", "Stop new pods scheduling here. Running pods stay."},
-			{"🔓 Uncordon", "Allow scheduling again."},
-			{"💤 Drain", "Cordon, then evict pods. DaemonSet and static pods are left alone."},
+			{act("Top"), "CPU and memory usage (needs metrics-server)."},
+			{act("Pods"), "Everything scheduled here, across all namespaces."},
+			{act("Cordon"), "Stop new pods scheduling here. Running pods stay."},
+			{act("Uncordon"), "Allow scheduling again."},
+			{danger("Drain"), "Cordon, then evict pods. DaemonSet and static pods are left alone."},
 		},
 		"namespaces": {
-			{"📋 Resources", "Object counts per kind in this namespace."},
-			{"🌐 Switch to", "Make this the namespace the menus browse."},
+			{act("Resources"), "Object counts per kind in this namespace."},
+			{act("Switch to"), "Make this the namespace the menus browse."},
 		},
 	}
 

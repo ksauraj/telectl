@@ -12,7 +12,6 @@ import (
 	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/utils/formatters"
-	"go.uber.org/zap"
 	"sigs.k8s.io/yaml"
 )
 
@@ -30,6 +29,7 @@ const (
 	kindPods        = "pods"
 	kindDeployments = "deployments"
 	kindReplicaSets = "replicasets"
+	kindNodes       = "nodes"
 )
 
 // showResourceDetail renders the detail pane for a single resource: a summary
@@ -47,18 +47,22 @@ func (b *Bot) showResourceDetail(
 	session *types.UserSession,
 ) {
 	kind := menus.CanonicalResource(resourceType)
+	req := detailReqFor(chatID, messageID, kind, namespace, name, session)
+
 	gvr, known := types.ResourceMap[kind]
 	if !known {
-		b.SendMessage(chatID, fmt.Sprintf("❌ Unknown resource type: %s", formatters.EscapeHTML(resourceType)))
+		b.showNotice(ctx, req, "Unknown resource type",
+			resourceType+" is not a resource this bot knows about.")
 		return
 	}
 	if types.IsClusterScoped(kind) {
 		namespace = ""
+		req.ns = ""
 	}
 
 	resource, err := b.k8sClient.GetResource(ctx, gvr.GVR(), namespace, name)
 	if err != nil {
-		b.reportError(chatID, "load "+kind, err)
+		b.reportPaneError(ctx, req, "load "+kind, err)
 		return
 	}
 
@@ -70,14 +74,15 @@ func (b *Bot) showResourceDetail(
 	})
 
 	kb := b.menuBuilder.GetResourceActionInlineKeyboard(kind, namespace, name, resource)
-	b.editRichView(ctx, chatID, messageID,
-		formatters.RichResourceSummary(resource),
-		fmt.Sprintf("%s <b>%s</b>\n%s in %s",
-			formatters.StatusEmoji(resource.Status),
+	b.showPane(ctx, chatID, messageID, pane{
+		rich: formatters.RichResourceSummary(resource),
+		fallback: fmt.Sprintf("%s <b>%s</b>\n%s in %s",
+			formatters.StatusGlyph(resource.Status),
 			formatters.EscapeHTML(name),
 			formatters.EscapeHTML(resource.Kind),
 			formatters.EscapeHTML(nsDisplay(namespace))),
-		&kb)
+		kb: &kb,
+	})
 }
 
 // detailReq carries the resolved parameters of one detail-pane verb, so each
@@ -97,61 +102,34 @@ type detailReq struct {
 //
 // A map rather than a switch so the verb set is enumerable: a test asserts that
 // every button the keyboards render has an entry here, which is what the
-// "⚠️ That action is not available yet" replies used to be — a button with no
+// "That action is not available yet" replies used to be — a button with no
 // handler, indistinguishable from a bug until someone tapped it.
 var detailVerbs = map[string]func(*Bot, context.Context, detailReq){
-	"describe": (*Bot).detailDescribe,
-	"labels":   func(b *Bot, ctx context.Context, r detailReq) { b.showLabels(ctx, r.chatID, r.kind, r.ns, r.name) },
-	"events":   func(b *Bot, ctx context.Context, r detailReq) { b.showObjectEvents(ctx, r.chatID, r.ns, r.name) },
-	"selector": func(b *Bot, ctx context.Context, r detailReq) { b.showSelector(ctx, r.chatID, r.kind, r.ns, r.name) },
-	"endpoints": func(b *Bot, ctx context.Context, r detailReq) {
-		b.showEndpoints(ctx, r.chatID, r.ns, r.name)
-	},
-	"pods":   (*Bot).detailWorkloadPods,
-	"rspods": (*Bot).detailWorkloadPods,
-	"nodepods": func(b *Bot, ctx context.Context, r detailReq) {
-		b.showNodePods(ctx, r.chatID, r.messageID, r.name, r.session)
-	},
-	"top":     func(b *Bot, ctx context.Context, r detailReq) { b.showNodeTop(ctx, r.chatID, r.name) },
-	"history": func(b *Bot, ctx context.Context, r detailReq) { b.showRolloutHistory(ctx, r.chatID, r.ns, r.name) },
-	"edit":    func(b *Bot, ctx context.Context, r detailReq) { b.showManifest(ctx, r.chatID, r.kind, r.ns, r.name) },
-	"cordon": func(b *Bot, ctx context.Context, r detailReq) {
-		b.setNodeSchedulable(ctx, r.chatID, r.messageID, r.name, false, r.session)
-	},
-	"uncordon": func(b *Bot, ctx context.Context, r detailReq) {
-		b.setNodeSchedulable(ctx, r.chatID, r.messageID, r.name, true, r.session)
-	},
-	"drain": func(b *Bot, ctx context.Context, r detailReq) {
-		b.confirmDrain(ctx, r.chatID, r.messageID, r.name)
-	},
-	"confirmdrain": func(b *Bot, ctx context.Context, r detailReq) {
-		b.drainNode(ctx, r.chatID, r.messageID, r.name, r.session)
-	},
-	"scale":   (*Bot).detailScaleOptions,
-	"rsscale": (*Bot).detailScaleOptions,
-	"scaleset": func(b *Bot, ctx context.Context, r detailReq) {
-		b.applyScale(ctx, r.chatID, r.messageID, r.kind, r.ns, r.name, r.extra, r.session)
-	},
-	"scalecustom": func(b *Bot, _ context.Context, r detailReq) {
-		b.promptCustomScale(r.chatID, r.kind, r.ns, r.name)
-	},
-	"logsopts": func(b *Bot, ctx context.Context, r detailReq) {
-		b.showLogOptions(ctx, r.chatID, r.messageID, r.ns, r.name)
-	},
-	cmdLogs: (*Bot).detailPodLogs,
-	"logsfollow": func(b *Bot, ctx context.Context, r detailReq) {
-		b.showFollowLogs(ctx, r.chatID, r.ns, r.name, r.container)
-	},
-	"logsprevious": func(b *Bot, ctx context.Context, r detailReq) {
-		b.showPreviousLogs(ctx, r.chatID, r.ns, r.name, r.container)
-	},
-	"nsresources": func(b *Bot, ctx context.Context, r detailReq) {
-		b.showNamespaceSummary(ctx, r.chatID, r.name)
-	},
-	"help": func(b *Bot, _ context.Context, r detailReq) {
-		b.SendRich(r.chatID, formatters.RichHelpForResource(r.kind),
-			"Actions for "+formatters.EscapeHTML(r.kind))
-	},
+	"describe":     (*Bot).detailDescribe,
+	"labels":       (*Bot).showLabels,
+	"events":       (*Bot).showObjectEvents,
+	"selector":     (*Bot).showSelector,
+	"endpoints":    (*Bot).showEndpoints,
+	"pods":         (*Bot).showWorkloadPods,
+	"rspods":       (*Bot).showWorkloadPods,
+	"nodepods":     (*Bot).showNodePods,
+	"top":          (*Bot).showNodeTop,
+	"history":      (*Bot).showRolloutHistory,
+	"edit":         (*Bot).showManifest,
+	"cordon":       func(b *Bot, ctx context.Context, r detailReq) { b.setNodeSchedulable(ctx, r, false) },
+	"uncordon":     func(b *Bot, ctx context.Context, r detailReq) { b.setNodeSchedulable(ctx, r, true) },
+	"drain":        (*Bot).confirmDrain,
+	"confirmdrain": (*Bot).drainNode,
+	"scale":        (*Bot).showScaleOptions,
+	"rsscale":      (*Bot).showScaleOptions,
+	"scaleset":     (*Bot).applyScale,
+	"scalecustom":  (*Bot).promptCustomScale,
+	"logsopts":     (*Bot).showLogOptions,
+	cmdLogs:        (*Bot).detailPodLogs,
+	"logsfollow":   (*Bot).showFollowLogs,
+	"logsprevious": (*Bot).showPreviousLogs,
+	"nsresources":  (*Bot).showNamespaceSummary,
+	"help":         (*Bot).showResourceHelp,
 }
 
 // dispatchDetailAction handles the verbs reachable from a detail pane. It
@@ -181,25 +159,22 @@ func (b *Bot) dispatchDetailAction(
 	return true
 }
 
-// detailDescribe reuses the /describe handler, so the menu and the typed
-// command can never render the same object differently.
+// detailDescribe renders the full object into the pane.
+//
+// This used to delegate to the /describe command handler to keep one
+// implementation. That handler sends a message, which is what the single pane
+// forbids, so the shared piece is now the renderer (formatters.RichResource)
+// rather than the handler — the menu and the typed command still cannot render
+// the same object differently, because they call the same formatter.
 func (b *Bot) detailDescribe(ctx context.Context, r detailReq) {
-	if r.kind == "" || r.name == "" {
+	res, err := b.getResource(ctx, r.kind, r.ns, r.name)
+	if err != nil {
+		b.reportPaneError(ctx, r, "describe "+r.kind, err)
 		return
 	}
-	args := []string{r.kind, r.name}
-	if r.ns != "" {
-		args = append(args, "-n", r.ns)
-	}
-	b.runCommand(ctx, "describe", args, r.chatID, r.session)
-}
-
-func (b *Bot) detailWorkloadPods(ctx context.Context, r detailReq) {
-	b.showWorkloadPods(ctx, r.chatID, r.messageID, r.kind, r.ns, r.name, r.session)
-}
-
-func (b *Bot) detailScaleOptions(ctx context.Context, r detailReq) {
-	b.showScaleOptions(ctx, r.chatID, r.messageID, r.kind, r.ns, r.name)
+	b.showVerbResult(ctx, r,
+		formatters.RichResource(res, true),
+		formatters.FormatResource(res, "wide"))
 }
 
 // detailPodLogs serves the per-container and tail-size log buttons: Container
@@ -208,16 +183,29 @@ func (b *Bot) detailPodLogs(ctx context.Context, r detailReq) {
 	if r.name == "" {
 		return
 	}
-	b.showPodLogs(ctx, r.chatID, r.ns, r.name, r.container, r.extra)
+	opts := k8s.PodLogOptions{Namespace: r.ns, PodName: r.name, Container: r.container}
+	if r.extra != "" {
+		if n, err := strconv.ParseInt(r.extra, 10, 64); err == nil && n > 0 {
+			opts.TailLines = types.Int64Ptr(n)
+		}
+	}
+	logs, err := b.fetchLogs(ctx, opts)
+	if err != nil {
+		b.reportPaneError(ctx, r, "read logs", err)
+		return
+	}
+	label := r.ns + "/" + r.name
+	if r.container != "" {
+		label += " · " + r.container
+	}
+	b.showVerbResult(ctx, r, formatters.RichLogs(label, "", logs),
+		"Logs for "+formatters.EscapeHTML(label))
 }
 
-// reportError logs the underlying failure and gives the user the API server's
-// own message, which is almost always the actionable part (Forbidden, NotFound,
-// "metrics-server not available").
-func (b *Bot) reportError(chatID int64, what string, err error) {
-	b.logger.Error("Menu action failed", zap.String("action", what), zap.Error(err))
-	b.SendMessage(chatID, fmt.Sprintf("❌ Failed to %s: %s",
-		formatters.EscapeHTML(what), formatters.EscapeHTML(err.Error())))
+func (b *Bot) showResourceHelp(ctx context.Context, r detailReq) {
+	b.showVerbResult(ctx, r,
+		formatters.RichHelpForResource(r.kind),
+		"Actions for "+formatters.EscapeHTML(r.kind))
 }
 
 func (b *Bot) getResource(ctx context.Context, kind, namespace, name string) (*k8s.ResourceInfo, error) {
@@ -231,15 +219,15 @@ func (b *Bot) getResource(ctx context.Context, kind, namespace, name string) (*k
 	return b.k8sClient.GetResource(ctx, gvr.GVR(), namespace, name)
 }
 
-func (b *Bot) showLabels(ctx context.Context, chatID int64, kind, ns, name string) {
-	r, err := b.getResource(ctx, kind, ns, name)
+func (b *Bot) showLabels(ctx context.Context, r detailReq) {
+	res, err := b.getResource(ctx, r.kind, r.ns, r.name)
 	if err != nil {
-		b.reportError(chatID, "read labels", err)
+		b.reportPaneError(ctx, r, "read labels", err)
 		return
 	}
-	b.SendRich(chatID, formatters.RichLabels(r),
-		fmt.Sprintf("🏷️ %s: %s", formatters.EscapeHTML(name),
-			formatters.EscapeHTML(labelsFallback(r))))
+	b.showVerbResult(ctx, r, formatters.RichLabels(res),
+		fmt.Sprintf("%s: %s", formatters.EscapeHTML(r.name),
+			formatters.EscapeHTML(labelsFallback(res))))
 }
 
 func labelsFallback(r *k8s.ResourceInfo) string {
@@ -257,117 +245,104 @@ func labelsFallback(r *k8s.ResourceInfo) string {
 // showObjectEvents lists events whose involvedObject is this resource. The
 // field selector is applied server-side so a busy namespace does not have to be
 // pulled down in full.
-func (b *Bot) showObjectEvents(ctx context.Context, chatID int64, ns, name string) {
-	selector := "involvedObject.name=" + name
-	events, err := b.k8sClient.GetEvents(ctx, ns, selector)
+func (b *Bot) showObjectEvents(ctx context.Context, r detailReq) {
+	events, err := b.k8sClient.GetEvents(ctx, r.ns, "involvedObject.name="+r.name)
 	if err != nil {
-		b.reportError(chatID, "read events", err)
+		b.reportPaneError(ctx, r, "read events", err)
 		return
 	}
 	if len(events) == 0 {
-		b.SendMessage(chatID, fmt.Sprintf(
-			"📭 No recent events for <code>%s</code>.\n\n"+
-				"Events expire after about an hour, so this is normal for a stable object.",
-			formatters.EscapeHTML(name)))
+		b.showNotice(ctx, r, "No recent events for "+r.name,
+			"Events expire after about an hour, so this is normal for a stable object.")
 		return
 	}
-	b.SendRich(chatID, formatters.RichEvents(events),
-		fmt.Sprintf("📅 %d event(s) for %s", len(events), formatters.EscapeHTML(name)))
+	b.showVerbResult(ctx, r, formatters.RichEvents(events),
+		fmt.Sprintf("%d event(s) for %s", len(events), formatters.EscapeHTML(r.name)))
 }
 
-func (b *Bot) showSelector(ctx context.Context, chatID int64, kind, ns, name string) {
-	r, err := b.getResource(ctx, kind, ns, name)
+func (b *Bot) showSelector(ctx context.Context, r detailReq) {
+	res, err := b.getResource(ctx, r.kind, r.ns, r.name)
 	if err != nil {
-		b.reportError(chatID, "read selector", err)
+		b.reportPaneError(ctx, r, "read selector", err)
 		return
 	}
-	selector, complete := k8s.SelectorForWorkload(r)
+	selector, complete := k8s.SelectorForWorkload(res)
 	if selector == "" {
-		b.SendMessage(chatID, fmt.Sprintf("ℹ️ <code>%s</code> has no pod selector.", formatters.EscapeHTML(name)))
+		b.showNotice(ctx, r, "No pod selector", r.name+" does not select pods.")
 		return
 	}
 
-	pods, listErr := b.k8sClient.ListPods(ctx, ns, selector, "")
+	pods, listErr := b.k8sClient.ListPods(ctx, r.ns, selector, "")
 	if listErr != nil {
-		b.reportError(chatID, "list matching pods", listErr)
+		b.reportPaneError(ctx, r, "list matching pods", listErr)
 		return
 	}
 
-	rich := formatters.RichSelector(r, selector, pods)
+	rich := formatters.RichSelector(res, selector, pods)
 	if !complete {
 		// Silently showing a partial match would misreport ownership.
-		rich += "\n\n> ⚠️ This selector also has matchExpressions, which are not " +
+		rich += "\n\n> " + formatters.GlyphDestructive +
+			" This selector also has matchExpressions, which are not " +
 			"applied here — the real selection may be narrower."
 	}
-	b.SendRich(chatID, rich,
-		fmt.Sprintf("🎯 %s selector: <code>%s</code> — %d pod(s)",
-			formatters.EscapeHTML(name), formatters.EscapeHTML(selector), len(pods)))
+	b.showVerbResult(ctx, r, rich,
+		fmt.Sprintf("%s selector: <code>%s</code> — %d pod(s)",
+			formatters.EscapeHTML(r.name), formatters.EscapeHTML(selector), len(pods)))
 }
 
-func (b *Bot) showEndpoints(ctx context.Context, chatID int64, ns, name string) {
-	ep, err := b.k8sClient.GetEndpoints(ctx, ns, name)
+func (b *Bot) showEndpoints(ctx context.Context, r detailReq) {
+	ep, err := b.k8sClient.GetEndpoints(ctx, r.ns, r.name)
 	if err != nil {
-		b.reportError(chatID, "read endpoints", err)
+		b.reportPaneError(ctx, r, "read endpoints", err)
 		return
 	}
 	ready, notReady := k8s.EndpointAddresses(ep)
-	b.SendRich(chatID, formatters.RichEndpoints(name, ready, notReady),
-		fmt.Sprintf("🔌 %s: %d ready, %d not ready",
-			formatters.EscapeHTML(name), len(ready), len(notReady)))
+	b.showVerbResult(ctx, r, formatters.RichEndpoints(r.name, ready, notReady),
+		fmt.Sprintf("%s: %d ready, %d not ready",
+			formatters.EscapeHTML(r.name), len(ready), len(notReady)))
 }
 
 // showWorkloadPods lists the pods a deployment/replicaset owns, as a browsable
 // pod list so each result is still tappable.
-func (b *Bot) showWorkloadPods(
-	ctx context.Context,
-	chatID int64,
-	messageID int,
-	kind,
-	ns,
-	name string,
-	session *types.UserSession,
-) {
-	pods, selector, err := b.k8sClient.ListPodsForWorkload(ctx, kind, ns, name)
+func (b *Bot) showWorkloadPods(ctx context.Context, r detailReq) {
+	pods, selector, err := b.k8sClient.ListPodsForWorkload(ctx, r.kind, r.ns, r.name)
 	if err != nil {
-		b.reportError(chatID, "list pods for "+kind, err)
+		b.reportPaneError(ctx, r, "list pods for "+r.kind, err)
 		return
 	}
-	b.showPodResults(ctx, chatID, messageID, pods, ns,
-		fmt.Sprintf("📋 Pods of %s %s", kind, name),
-		fmt.Sprintf("selector: `%s`", selector), session)
+	b.showPodResults(ctx, r, pods, r.ns,
+		fmt.Sprintf("Pods of %s %s", r.kind, r.name),
+		fmt.Sprintf("selector: `%s`", selector))
 }
 
-func (b *Bot) showNodePods(ctx context.Context, chatID int64, messageID int, node string, session *types.UserSession) {
-	pods, err := b.k8sClient.ListPodsOnNode(ctx, node)
+func (b *Bot) showNodePods(ctx context.Context, r detailReq) {
+	pods, err := b.k8sClient.ListPodsOnNode(ctx, r.name)
 	if err != nil {
-		b.reportError(chatID, "list pods on node", err)
+		b.reportPaneError(ctx, r, "list pods on node", err)
 		return
 	}
-	b.showPodResults(ctx, chatID, messageID, pods, "",
-		fmt.Sprintf("📋 Pods on node %s", node),
-		"Across all namespaces.", session)
+	b.showPodResults(ctx, r, pods, "",
+		"Pods on node "+r.name, "Across all namespaces.")
 }
 
 // showPodResults renders an ad-hoc pod list with the standard list keyboard, so
 // results from a workload or node drill-down behave like any other pod list.
 func (b *Bot) showPodResults(
 	ctx context.Context,
-	chatID int64,
-	messageID int,
+	r detailReq,
 	pods []k8s.ResourceInfo,
 	ns,
 	heading,
 	note string,
-	session *types.UserSession,
 ) {
 	if len(pods) == 0 {
-		b.SendMessage(chatID, "📭 "+formatters.EscapeHTML(heading)+" — none found.")
+		b.showNotice(ctx, r, heading, "None found.")
 		return
 	}
 
-	session.SetMenuState(&types.MenuState{
+	r.session.SetMenuState(&types.MenuState{
 		CurrentView:  "resource_list",
-		ResourceType: "pods",
+		ResourceType: kindPods,
 		Namespace:    ns,
 	})
 
@@ -377,47 +352,49 @@ func (b *Bot) showPodResults(
 		end = len(pods)
 	}
 
-	kb := b.menuBuilder.GetResourceListInlineKeyboard("pods", pods, 0, pageSize, ns)
+	kb := b.menuBuilder.GetResourceListInlineKeyboard(kindPods, pods, 0, pageSize, ns)
 	rich := fmt.Sprintf("### %s — %d\n\n%s\n\n%s",
 		heading, len(pods), note, formatters.RichResourceList(pods[:end], false))
-	b.editRichView(ctx, chatID, messageID, rich,
-		fmt.Sprintf("<b>%s</b> — %d", formatters.EscapeHTML(heading), len(pods)), &kb)
+	b.showPane(ctx, r.chatID, r.messageID, pane{
+		rich:     rich,
+		fallback: fmt.Sprintf("<b>%s</b> — %d", formatters.EscapeHTML(heading), len(pods)),
+		kb:       &kb,
+	})
 }
 
-func (b *Bot) showNodeTop(ctx context.Context, chatID int64, node string) {
+func (b *Bot) showNodeTop(ctx context.Context, r detailReq) {
 	metrics, err := b.k8sClient.GetNodeMetrics(ctx)
 	if err != nil {
 		// metrics-server is optional; say so rather than showing a raw 404.
-		b.SendMessage(chatID, fmt.Sprintf(
-			"📊 Metrics unavailable for <code>%s</code>.\n\nThis needs metrics-server installed in the cluster.\n\n<i>%s</i>",
-			formatters.EscapeHTML(node), formatters.EscapeHTML(err.Error())))
+		b.showNotice(ctx, r, "Metrics unavailable for "+r.name,
+			"This needs metrics-server installed in the cluster. "+err.Error())
 		return
 	}
 
 	// GetNodeMetrics returns every node; narrow to the one that was tapped.
 	var mine []k8s.ResourceInfo
 	for i := range metrics {
-		if metrics[i].Name == node {
+		if metrics[i].Name == r.name {
 			mine = append(mine, metrics[i])
 		}
 	}
 	if len(mine) == 0 {
-		b.SendMessage(chatID, fmt.Sprintf("📭 No metrics reported for node <code>%s</code>.",
-			formatters.EscapeHTML(node)))
+		b.showNotice(ctx, r, "No metrics for "+r.name,
+			"metrics-server is reachable but reported nothing for this node.")
 		return
 	}
-	b.SendRich(chatID, formatters.RichMetrics("📊 Node usage — "+node, mine),
-		fmt.Sprintf("📊 Usage for %s", formatters.EscapeHTML(node)))
+	b.showVerbResult(ctx, r, formatters.RichMetrics("Node usage — "+r.name, mine),
+		"Usage for "+formatters.EscapeHTML(r.name))
 }
 
-func (b *Bot) showRolloutHistory(ctx context.Context, chatID int64, ns, name string) {
-	revisions, err := b.k8sClient.RolloutHistory(ctx, ns, name)
+func (b *Bot) showRolloutHistory(ctx context.Context, r detailReq) {
+	revisions, err := b.k8sClient.RolloutHistory(ctx, r.ns, r.name)
 	if err != nil {
-		b.reportError(chatID, "read rollout history", err)
+		b.reportPaneError(ctx, r, "read rollout history", err)
 		return
 	}
-	b.SendRich(chatID, formatters.RichRolloutHistory(name, revisions),
-		fmt.Sprintf("📜 %s: %d revision(s)", formatters.EscapeHTML(name), len(revisions)))
+	b.showVerbResult(ctx, r, formatters.RichRolloutHistory(r.name, revisions),
+		fmt.Sprintf("%s: %d revision(s)", formatters.EscapeHTML(r.name), len(revisions)))
 }
 
 // showManifest renders the live object as YAML.
@@ -426,218 +403,201 @@ func (b *Bot) showRolloutHistory(ctx context.Context, chatID int64, ns, name str
 // back from a chat message is not offered: there is no way to show a diff or
 // take a lock, so an apply from here could silently overwrite a change someone
 // else made seconds earlier.
-func (b *Bot) showManifest(ctx context.Context, chatID int64, kind, ns, name string) {
-	r, err := b.getResource(ctx, kind, ns, name)
+func (b *Bot) showManifest(ctx context.Context, r detailReq) {
+	res, err := b.getResource(ctx, r.kind, r.ns, r.name)
 	if err != nil {
-		b.reportError(chatID, "read manifest", err)
+		b.reportPaneError(ctx, r, "read manifest", err)
 		return
 	}
-	if r == nil || r.Details == nil {
-		b.SendMessage(chatID, "📭 No manifest available.")
+	if res == nil || res.Details == nil {
+		b.showNotice(ctx, r, "No manifest available", "The API server returned no object body.")
 		return
 	}
 
-	out, marshalErr := yaml.Marshal(r.Details)
+	out, marshalErr := yaml.Marshal(res.Details)
 	if marshalErr != nil {
-		b.reportError(chatID, "render manifest", marshalErr)
+		b.reportPaneError(ctx, r, "render manifest", marshalErr)
 		return
 	}
+
+	// Left below the pane budget so the fenced block plus the note still fit;
+	// showPane's own truncation would otherwise cut inside the fence.
 	text := string(out)
-	const maxManifest = 3000
+	const maxManifest = 2600
 	truncated := false
 	if len(text) > maxManifest {
-		text = text[:maxManifest]
+		text = string([]rune(text)[:maxManifest])
 		truncated = true
 	}
 
-	rich := formatters.RichManifest(r, text)
+	rich := formatters.RichManifest(res, text)
 	if truncated {
-		rich += "\n\n> ✂️ Truncated. Use `/get " + kind + " " + name + " -o yaml` for the full manifest."
+		rich += "\n\n> Truncated. Use `/get " + r.kind + " " + r.name +
+			" -o yaml` for the full manifest."
 	}
-	b.SendRich(chatID, rich, fmt.Sprintf("📄 Manifest for %s", formatters.EscapeHTML(name)))
+	b.showVerbResult(ctx, r, rich, "Manifest for "+formatters.EscapeHTML(r.name))
 }
 
-func (b *Bot) setNodeSchedulable(
-	ctx context.Context,
-	chatID int64,
-	messageID int,
-	node string,
-	schedulable bool,
-	session *types.UserSession,
-) {
+// setNodeSchedulable cordons or uncordons, then re-renders the node's detail
+// pane so the keyboard reflects the new state.
+//
+// The outcome is reported in the pane the confirmation was showing, and the
+// detail pane it returns to is a fresh read — so the result the user sees is the
+// cluster's state, not this function's assumption about it.
+func (b *Bot) setNodeSchedulable(ctx context.Context, r detailReq, schedulable bool) {
 	verb := "Cordon"
 	if schedulable {
 		verb = "Uncordon"
 	}
 
-	if err := b.k8sClient.SetNodeSchedulable(ctx, node, schedulable); err != nil {
-		b.reportError(chatID, strings.ToLower(verb)+" node", err)
+	if err := b.k8sClient.SetNodeSchedulable(ctx, r.name, schedulable); err != nil {
+		b.reportPaneError(ctx, r, strings.ToLower(verb)+" node", err)
 		return
 	}
 
-	note := "New pods will not be scheduled here. Pods already running are untouched — use Drain to move them."
-	if schedulable {
-		note = "The scheduler can place pods here again."
-	}
+	// Under dry run nothing changed, so re-rendering the pane would show the old
+	// state with no hint that the tap was a no-op. Say so instead.
 	if b.k8sClient.IsDryRun() {
-		note = "🧪 Dry run — nothing was changed."
+		b.showNotice(ctx, r, "Dry run — "+strings.ToLower(verb)+" not applied",
+			"telectl is running with dry-run enabled, so "+r.name+" was not changed.")
+		return
 	}
 
-	b.SendRich(chatID, formatters.RichActionResult("🔧 "+verb+" — "+node,
-		[][2]string{{"Node", node}, {"Schedulable", boolWord(schedulable)}}, note),
-		fmt.Sprintf("🔧 %s %s", verb, formatters.EscapeHTML(node)))
-
-	// Re-render the detail pane so the keyboard reflects the new state.
-	b.showResourceDetail(ctx, chatID, messageID, "nodes", "", node, session)
-}
-
-func boolWord(b bool) string {
-	if b {
-		return "yes"
-	}
-	return "no"
+	// Re-read rather than assume: the detail pane is the report.
+	b.showResourceDetail(ctx, r.chatID, r.messageID, kindNodes, "", r.name, r.session)
 }
 
 // confirmDrain gates the drain behind an explicit confirmation. Drain evicts
 // every eligible pod on a node; it is the most disruptive thing this bot can
 // do from a single tap.
-func (b *Bot) confirmDrain(ctx context.Context, chatID int64, messageID int, node string) {
-	pods, err := b.k8sClient.ListPodsOnNode(ctx, node)
+func (b *Bot) confirmDrain(ctx context.Context, r detailReq) {
+	pods, err := b.k8sClient.ListPodsOnNode(ctx, r.name)
 	if err != nil {
-		b.reportError(chatID, "inspect node before drain", err)
+		b.reportPaneError(ctx, r, "inspect node before drain", err)
 		return
 	}
 
 	kb := tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			b.menuBuilder.Button("✅ Yes, drain", "menu:action:confirmdrain:nodes::"+node),
-			b.menuBuilder.Button("❌ Cancel", "menu:resource:view:nodes::"+node),
+			b.menuBuilder.Button(formatters.Btn(formatters.GlyphDestructive, "Yes, drain"),
+				"menu:action:confirmdrain:"+kindNodes+"::"+r.name),
+			b.menuBuilder.Button(formatters.Btn(formatters.GlyphCancel, "Cancel"),
+				"menu:resource:view:"+kindNodes+"::"+r.name),
 		),
 	)
-	b.editView(ctx, chatID, messageID, fmt.Sprintf(
-		"⚠️ Drain node <code>%s</code>?\n\n"+
+	b.editView(ctx, r.chatID, r.messageID, fmt.Sprintf(
+		"<b>Drain node <code>%s</code>?</b>\n\n"+
 			"It currently runs <b>%d</b> pod(s).\n\n"+
 			"The node will be cordoned and its pods evicted. DaemonSet and static "+
 			"pods are left in place. Evictions respect PodDisruptionBudgets, so "+
 			"some may be refused.",
-		formatters.EscapeHTML(node), len(pods)), &kb)
+		formatters.EscapeHTML(r.name), len(pods)), &kb)
 }
 
-func (b *Bot) drainNode(ctx context.Context, chatID int64, messageID int, node string, session *types.UserSession) {
-	b.SendMessage(chatID, fmt.Sprintf("💤 Draining <code>%s</code>…", formatters.EscapeHTML(node)))
-
-	res, err := b.k8sClient.DrainNode(ctx, node)
+func (b *Bot) drainNode(ctx context.Context, r detailReq) {
+	res, err := b.k8sClient.DrainNode(ctx, r.name)
 	if err != nil {
-		b.reportError(chatID, "drain node", err)
+		b.reportPaneError(ctx, r, "drain node", err)
 		return
 	}
 
-	b.SendRich(chatID, formatters.RichDrainResult(node, res),
-		fmt.Sprintf("💤 Drained %s: %d evicted, %d skipped, %d failed",
-			formatters.EscapeHTML(node), len(res.Evicted), len(res.Skipped), len(res.Failed)))
-
-	b.showResourceDetail(ctx, chatID, messageID, "nodes", "", node, session)
+	// The result is the report, and it is what the user needs to read: which
+	// pods were evicted, skipped or refused. Returning straight to the detail
+	// pane would discard it.
+	b.showVerbResult(ctx, r, formatters.RichDrainResult(r.name, res),
+		fmt.Sprintf("Drained %s: %d evicted, %d skipped, %d failed",
+			formatters.EscapeHTML(r.name), len(res.Evicted), len(res.Skipped), len(res.Failed)))
 }
 
-func (b *Bot) showScaleOptions(ctx context.Context, chatID int64, messageID int, kind, ns, name string) {
+func (b *Bot) showScaleOptions(ctx context.Context, r detailReq) {
 	var (
 		current int32
 		err     error
 	)
-	switch kind {
+	switch r.kind {
 	case kindDeployments:
-		current, err = b.k8sClient.GetDeploymentReplicas(ctx, ns, name)
+		current, err = b.k8sClient.GetDeploymentReplicas(ctx, r.ns, r.name)
 	case kindReplicaSets:
-		current, err = b.k8sClient.GetReplicaSetReplicas(ctx, ns, name)
+		current, err = b.k8sClient.GetReplicaSetReplicas(ctx, r.ns, r.name)
 	default:
-		b.SendMessage(chatID, "❌ Only deployments and replicasets can be scaled.")
+		b.showNotice(ctx, r, "Not scalable", "Only deployments and replicasets can be scaled.")
 		return
 	}
 	if err != nil {
-		b.reportError(chatID, "read replica count", err)
+		b.reportPaneError(ctx, r, "read replica count", err)
 		return
 	}
 
-	text := fmt.Sprintf("📈 <b>Scale %s</b>\n\n<code>%s</code> in <code>%s</code>\nCurrent replicas: <b>%d</b>",
-		formatters.EscapeHTML(kind), formatters.EscapeHTML(name),
-		formatters.EscapeHTML(nsDisplay(ns)), current)
-	if kind == kindReplicaSets {
-		text += "\n\n⚠️ If a Deployment owns this ReplicaSet, its controller will " +
+	text := fmt.Sprintf("<b>Scale %s</b>\n\n<code>%s</code> in <code>%s</code>\nCurrent replicas: <b>%d</b>",
+		formatters.EscapeHTML(r.kind), formatters.EscapeHTML(r.name),
+		formatters.EscapeHTML(nsDisplay(r.ns)), current)
+	if r.kind == kindReplicaSets {
+		text += "\n\n" + formatters.GlyphDestructive +
+			" If a Deployment owns this ReplicaSet, its controller will " +
 			"revert the change within seconds. Scale the Deployment instead."
 	}
 
-	kb := b.menuBuilder.GetScaleKeyboard(kind, ns, name, current)
-	b.editView(ctx, chatID, messageID, text, &kb)
+	kb := b.menuBuilder.GetScaleKeyboard(r.kind, r.ns, r.name, current)
+	b.editView(ctx, r.chatID, r.messageID, text, &kb)
 }
 
-func (b *Bot) applyScale(
-	ctx context.Context,
-	chatID int64,
-	messageID int,
-	kind,
-	ns,
-	name,
-	replicasArg string,
-	session *types.UserSession,
-) {
-	replicas, err := strconv.ParseInt(replicasArg, 10, 32)
+// applyScale sets the replica count, then re-renders the detail pane so the
+// reported figure is one the API server confirmed.
+func (b *Bot) applyScale(ctx context.Context, r detailReq) {
+	replicas, err := strconv.ParseInt(r.extra, 10, 32)
 	if err != nil || replicas < 0 {
-		b.SendMessage(chatID, fmt.Sprintf("❌ Invalid replica count: %s", formatters.EscapeHTML(replicasArg)))
+		b.showNotice(ctx, r, "Invalid replica count",
+			"Could not read a replica count from "+r.extra+".")
 		return
 	}
 
-	switch kind {
+	switch r.kind {
 	case kindDeployments:
-		err = b.k8sClient.ScaleDeployment(ctx, ns, name, int32(replicas))
+		err = b.k8sClient.ScaleDeployment(ctx, r.ns, r.name, int32(replicas))
 	case kindReplicaSets:
-		err = b.k8sClient.ScaleReplicaSet(ctx, ns, name, int32(replicas))
+		err = b.k8sClient.ScaleReplicaSet(ctx, r.ns, r.name, int32(replicas))
 	default:
-		b.SendMessage(chatID, "❌ Only deployments and replicasets can be scaled.")
+		b.showNotice(ctx, r, "Not scalable", "Only deployments and replicasets can be scaled.")
 		return
 	}
 	if err != nil {
-		b.reportError(chatID, "scale "+kind, err)
+		b.reportPaneError(ctx, r, "scale "+r.kind, err)
 		return
 	}
 
-	note := "Scaling is asynchronous — the controller will converge to this count."
 	if b.k8sClient.IsDryRun() {
-		note = "🧪 Dry run — nothing was changed."
+		b.showNotice(ctx, r, "Dry run — scale not applied",
+			fmt.Sprintf("telectl is running with dry-run enabled, so %s was not scaled to %d.",
+				r.name, replicas))
+		return
 	}
-	b.SendRich(chatID, formatters.RichActionResult("📈 Scaled "+name,
-		[][2]string{
-			{"Kind", kind},
-			{"Namespace", nsDisplay(ns)},
-			{"Replicas", strconv.FormatInt(replicas, 10)},
-		}, note),
-		fmt.Sprintf("📈 Scaled %s to %d", formatters.EscapeHTML(name), replicas))
 
-	b.showResourceDetail(ctx, chatID, messageID, kind, ns, name, session)
+	// Scaling is asynchronous, so the pane shows the spec value the controller
+	// is converging to rather than a count this function asserts.
+	b.showResourceDetail(ctx, r.chatID, r.messageID, r.kind, r.ns, r.name, r.session)
 }
 
-func (b *Bot) promptCustomScale(chatID int64, kind, ns, name string) {
-	singular := strings.TrimSuffix(kind, "s")
-	b.SendMessage(chatID, fmt.Sprintf(
-		"✏️ Send the replica count as a command:\n\n<code>/scale %s %s &lt;replicas&gt; -n %s</code>",
-		formatters.EscapeHTML(singular), formatters.EscapeHTML(name),
-		formatters.EscapeHTML(nsDisplay(ns))))
+func (b *Bot) promptCustomScale(ctx context.Context, r detailReq) {
+	singular := strings.TrimSuffix(r.kind, "s")
+	b.showUsage(ctx, r, "Custom replica count",
+		fmt.Sprintf("/scale %s %s <replicas> -n %s", singular, r.name, nsDisplay(r.ns)))
 }
 
-func (b *Bot) showLogOptions(ctx context.Context, chatID int64, messageID int, ns, name string) {
+func (b *Bot) showLogOptions(ctx context.Context, r detailReq) {
 	container := ""
-	if pod, err := b.k8sClient.GetPod(ctx, ns, name); err == nil {
+	if pod, err := b.k8sClient.GetPod(ctx, r.ns, r.name); err == nil {
 		if names := podContainers(pod); len(names) > 0 {
 			container = names[0]
 		}
 	}
-	kb := b.menuBuilder.GetLogOptionsKeyboard(ns, name, container)
+	kb := b.menuBuilder.GetLogOptionsKeyboard(r.ns, r.name, container)
 	label := "first container"
 	if container != "" {
 		label = "<code>" + formatters.EscapeHTML(container) + "</code>"
 	}
-	b.editView(ctx, chatID, messageID, fmt.Sprintf(
-		"📋 <b>Logs</b>\n\nPod <code>%s</code> in <code>%s</code>\nContainer: %s\n\nPick how much to fetch.",
-		formatters.EscapeHTML(name), formatters.EscapeHTML(nsDisplay(ns)), label), &kb)
+	b.editView(ctx, r.chatID, r.messageID, fmt.Sprintf(
+		"<b>Logs</b>\n\nPod <code>%s</code> in <code>%s</code>\nContainer: %s\n\nPick how much to fetch.",
+		formatters.EscapeHTML(r.name), formatters.EscapeHTML(nsDisplay(r.ns)), label), &kb)
 }
 
 func podContainers(pod *k8s.ResourceInfo) []string {
@@ -665,64 +625,42 @@ func podContainers(pod *k8s.ResourceInfo) []string {
 	return out
 }
 
-// showPodLogs fetches a pod's logs with an optional container and line count.
-func (b *Bot) showPodLogs(ctx context.Context, chatID int64, ns, name, container, tailArg string) {
-	opts := k8s.PodLogOptions{Namespace: ns, PodName: name, Container: container}
-	if tailArg != "" {
-		if n, err := strconv.ParseInt(tailArg, 10, 64); err == nil && n > 0 {
-			opts.TailLines = types.Int64Ptr(n)
-		}
-	}
-	logs, err := b.fetchLogs(ctx, opts)
-	if err != nil {
-		b.reportError(chatID, "read logs", err)
-		return
-	}
-	label := ns + "/" + name
-	if container != "" {
-		label += " · " + container
-	}
-	b.SendRich(chatID, formatters.RichLogs(label, "", logs),
-		fmt.Sprintf("📋 Logs for %s", formatters.EscapeHTML(label)))
-}
-
 // showFollowLogs fetches a large recent slice instead of streaming.
 //
 // A true follow would need a long-lived goroutine per user pushing edits into
 // the chat, and Telegram's rate limits make that a poor fit. Saying so is
 // better than a "Follow" button that quietly behaves like a one-shot fetch.
-func (b *Bot) showFollowLogs(ctx context.Context, chatID int64, ns, name, container string) {
+func (b *Bot) showFollowLogs(ctx context.Context, r detailReq) {
 	logs, err := b.fetchLogs(ctx, k8s.PodLogOptions{
-		Namespace: ns, PodName: name, Container: container,
+		Namespace: r.ns, PodName: r.name, Container: r.container,
 		TailLines: types.Int64Ptr(200),
 	})
 	if err != nil {
-		b.reportError(chatID, "read logs", err)
+		b.reportPaneError(ctx, r, "read logs", err)
 		return
 	}
-	rich := formatters.RichLogs(ns+"/"+name, container, logs) +
-		"\n\n> ℹ️ Live streaming is not available in chat. This is the last 200 lines — tap again for a fresh snapshot."
-	b.SendRich(chatID, rich, fmt.Sprintf("📋 Last 200 lines of %s", formatters.EscapeHTML(name)))
+	rich := formatters.RichLogs(r.ns+"/"+r.name, r.container, logs) +
+		"\n\n> Live streaming is not available in chat. This is the last 200 " +
+		"lines — tap again for a fresh snapshot."
+	b.showVerbResult(ctx, r, rich, "Last 200 lines of "+formatters.EscapeHTML(r.name))
 }
 
-func (b *Bot) showPreviousLogs(ctx context.Context, chatID int64, ns, name, container string) {
+func (b *Bot) showPreviousLogs(ctx context.Context, r detailReq) {
 	logs, err := b.fetchLogs(ctx, k8s.PodLogOptions{
-		Namespace: ns, PodName: name, Container: container,
+		Namespace: r.ns, PodName: r.name, Container: r.container,
 		Previous: true, TailLines: types.Int64Ptr(200),
 	})
 	if err != nil {
 		// The common case is a container that has never restarted, which the
 		// API server reports as a somewhat opaque error.
-		b.SendMessage(chatID, fmt.Sprintf(
-			"⏮️ No previous logs for <code>%s</code>.\n\n"+
-				"This usually means the container has not restarted, so there is no "+
-				"earlier instance to read.\n\n<i>%s</i>",
-			formatters.EscapeHTML(name), formatters.EscapeHTML(err.Error())))
+		b.showNotice(ctx, r, "No previous logs for "+r.name,
+			"This usually means the container has not restarted, so there is no "+
+				"earlier instance to read. "+err.Error())
 		return
 	}
-	b.SendRich(chatID,
-		formatters.RichLogs(ns+"/"+name+" (previous)", container, logs),
-		fmt.Sprintf("⏮️ Previous logs for %s", formatters.EscapeHTML(name)))
+	b.showVerbResult(ctx, r,
+		formatters.RichLogs(r.ns+"/"+r.name+" (previous)", r.container, logs),
+		"Previous logs for "+formatters.EscapeHTML(r.name))
 }
 
 func (b *Bot) fetchLogs(ctx context.Context, opts k8s.PodLogOptions) (string, error) {
@@ -742,12 +680,12 @@ func (b *Bot) fetchLogs(ctx context.Context, opts k8s.PodLogOptions) (string, er
 	return formatters.FormatPodLogs(string(raw), 200), nil
 }
 
-func (b *Bot) showNamespaceSummary(ctx context.Context, chatID int64, namespace string) {
-	if namespace == "" {
-		b.SendMessage(chatID, "❌ No namespace selected.")
+func (b *Bot) showNamespaceSummary(ctx context.Context, r detailReq) {
+	if r.name == "" {
+		b.showNotice(ctx, r, "No namespace selected", "Pick a namespace first.")
 		return
 	}
-	summary := b.k8sClient.SummariseNamespace(ctx, namespace)
-	b.SendRich(chatID, formatters.RichNamespaceSummary(summary),
-		fmt.Sprintf("📋 Contents of %s", formatters.EscapeHTML(namespace)))
+	summary := b.k8sClient.SummariseNamespace(ctx, r.name)
+	b.showVerbResult(ctx, r, formatters.RichNamespaceSummary(summary),
+		"Contents of "+formatters.EscapeHTML(r.name))
 }

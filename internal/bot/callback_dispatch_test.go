@@ -7,8 +7,12 @@ import (
 	"testing"
 )
 
-// Before the fix, handleCallbackQuery replied "🔘 Callback: <data>" for every
+// Before the fix, handleCallbackQuery replied "Callback: <data>" for every
 // button. These tests assert real navigation instead.
+//
+// Every case edits: a callback renders into the pane its button lives on. Help
+// is in this list deliberately — it was the last navigation target that sent a
+// new message, which pushed the menu off screen.
 func TestCallbackNavigationEditsInPlace(t *testing.T) {
 	fake := newFakeTelegram(t)
 	b, lib := newTestBot(t, fake)
@@ -25,7 +29,7 @@ func TestCallbackNavigationEditsInPlace(t *testing.T) {
 		{"monitor home", "menu:monitor:home", "editMessageText", "Monitoring"},
 		{"operations home", "menu:ops:home", "editMessageText", "Operations"},
 		{"settings home", "menu:settings:home", "editMessageText", "Settings"},
-		{"help button", "menu:help", "sendMessage", "Command Reference"},
+		{"help button", "menu:help", "editMessageText", "command reference"},
 	}
 
 	for _, tc := range tests {
@@ -52,7 +56,7 @@ func TestCallbackNavigationEditsInPlace(t *testing.T) {
 				t.Errorf("reply for %q missing %q.\ngot: %s", tc.data, tc.wantSubstr, joined)
 			}
 			// The old placeholder behaviour must be gone.
-			if strings.Contains(joined, "🔘 Callback:") {
+			if strings.Contains(joined, "Callback: menu:") {
 				t.Errorf("callback %q still hits the placeholder echo", tc.data)
 			}
 		})

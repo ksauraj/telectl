@@ -207,22 +207,25 @@ func TestTruncateString(t *testing.T) {
 	assert.Equal(t, "Short", output)
 }
 
-// StatusEmoji drives the status glyph in every list and detail pane; an
+// StatusGlyph drives the status glyph in every list and detail pane; an
 // unmapped status must fall back rather than render empty.
-func TestStatusEmoji(t *testing.T) {
+func TestStatusGlyph(t *testing.T) {
 	cases := map[string]string{
-		"Running":          "🟢",
-		"running":          "🟢",
-		"Pending":          "🟡",
-		"Failed":           "🔴",
-		"CrashLoopBackOff": "🔴",
-		"Terminating":      "🟠",
-		"Unknown":          "❓",
-		"":                 "•",
-		"SomethingNew":     "•",
+		"Running":          GlyphHealthy,
+		"running":          GlyphHealthy,
+		"Active":           GlyphHealthy,
+		"Bound":            GlyphHealthy,
+		"Completed":        GlyphDone,
+		"Pending":          GlyphWaiting,
+		"Failed":           GlyphBroken,
+		"CrashLoopBackOff": GlyphBroken,
+		"Terminating":      GlyphStopping,
+		"Unknown":          GlyphUnknown,
+		"":                 GlyphNeutral,
+		"SomethingNew":     GlyphNeutral,
 	}
 	for status, want := range cases {
-		assert.Equal(t, want, StatusEmoji(status), "status %q", status)
+		assert.Equal(t, want, StatusGlyph(status), "status %q", status)
 	}
 }
 
@@ -292,8 +295,8 @@ func TestDisplayWidth(t *testing.T) {
 	cases := map[string]int{
 		"":       0,
 		"abc":    3,
-		"🟢":      2, // emoji: two columns
-		"🟢 pod":  6, // 2 + space + 3
+		"🟢":      2, // emoji-ok: an emoji is two columns
+		"🟢 pod":  6, // emoji-ok: 2 + space + 3
 		"日本":     4, // CJK: two columns each
 		"한글":     4, // Hangul syllables
 		"a日b":    4,
@@ -309,7 +312,7 @@ func TestDisplayWidth(t *testing.T) {
 // padRight must pad to the visual width, not the byte or rune count, or a
 // column containing an emoji ends up one character short.
 func TestPadRightUsesDisplayWidth(t *testing.T) {
-	got := padRight("🟢", 4)
+	got := padRight("🟢", 4) // emoji-ok: padding must respect emoji width
 	if displayWidth(got) != 4 {
 		t.Errorf("padRight(%q, 4) has display width %d, want 4", got, displayWidth(got))
 	}
@@ -333,8 +336,8 @@ func TestTruncateToWidthKeepsValidUTF8(t *testing.T) {
 	}{
 		{"ascii", strings.Repeat("a", 60), 42},
 		{"cjk", strings.Repeat("日", 60), 42},
-		{"emoji", strings.Repeat("🟢", 60), 42},
-		{"mixed", strings.Repeat("a日🟢", 30), 42},
+		{"emoji", strings.Repeat("🟢", 60), 42},   // emoji-ok
+		{"mixed", strings.Repeat("a日🟢", 30), 42}, // emoji-ok
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

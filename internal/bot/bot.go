@@ -187,13 +187,15 @@ func (b *Bot) handleMessage(ctx context.Context, bot *bottg.Bot, update *botmode
 
 	if !b.IsUserAllowed(userID) {
 		b.logger.Debug("User not allowed", zap.Int64("user_id", userID))
-		if _, err := b.tgBot.SendText(ctx, chatID, "❌ You are not authorized to use this bot.", "HTML", nil); err != nil {
+		refusal := formatters.Btn(formatters.GlyphBroken, "You are not authorized to use this bot.")
+		if _, err := b.tgBot.SendText(ctx, chatID, refusal, "HTML", nil); err != nil {
 			b.logger.Error("Failed to send unauthorized message", zap.Error(err), zap.Int64("chat_id", chatID))
 		}
 		return
 	}
 	if !b.rateLimiter.Allow(userID) {
-		if _, err := b.tgBot.SendText(ctx, chatID, "⏱️ Rate limit exceeded. Please wait a moment.", "HTML", nil); err != nil {
+		notice := formatters.Btn(formatters.GlyphWaiting, "Rate limit exceeded. Please wait a moment.")
+		if _, err := b.tgBot.SendText(ctx, chatID, notice, "HTML", nil); err != nil {
 			b.logger.Error("Failed to send rate limit message", zap.Error(err), zap.Int64("chat_id", chatID))
 		}
 		return
@@ -253,7 +255,7 @@ func (b *Bot) handleCommand(ctx context.Context, msg *botmodels.Message, session
 	cmd = strings.Split(cmd, " ")[0]
 	if !b.IsCommandAllowed(cmd) {
 		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID,
-			fmt.Sprintf("❌ Command /%s is not allowed.", cmd), "HTML", nil); err != nil {
+			formatters.Btn(formatters.GlyphBroken, fmt.Sprintf("Command /%s is not allowed.", cmd)), "HTML", nil); err != nil {
 			b.logger.Error("Failed to send command not allowed", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
 		}
 		return
@@ -261,7 +263,8 @@ func (b *Bot) handleCommand(ctx context.Context, msg *botmodels.Message, session
 	handler, ok := b.handlers[cmd]
 	if !ok {
 		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID,
-			fmt.Sprintf("❌ Unknown command: /%s\nUse /help to see available commands.", cmd),
+			formatters.Btn(formatters.GlyphBroken,
+				fmt.Sprintf("Unknown command: /%s\nUse /help to see available commands.", cmd)),
 			"HTML", nil); err != nil {
 			b.logger.Error("Failed to send unknown command", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
 		}
@@ -279,7 +282,7 @@ func (b *Bot) handleCommand(ctx context.Context, msg *botmodels.Message, session
 		// Distinct name: shadowing err here would make the message below report
 		// the send failure instead of the command failure it is describing.
 		if _, sendErr := b.tgBot.SendText(ctx, msg.Chat.ID,
-			fmt.Sprintf("❌ Error: %s", err.Error()), "HTML", nil); sendErr != nil {
+			formatters.Btn(formatters.GlyphBroken, fmt.Sprintf("Error: %s", err.Error())), "HTML", nil); sendErr != nil {
 			b.logger.Error("Failed to send command error",
 				zap.Error(sendErr), zap.Int64("chat_id", msg.Chat.ID))
 		}
@@ -316,7 +319,13 @@ func (b *Bot) handleCallbackQuery(ctx context.Context, bot *bottg.Bot, update *b
 	data, ok := b.menuBuilder.ResolveCallback(callback.Data)
 	if !ok {
 		b.logger.Debug("Stale callback token", zap.String("data", callback.Data))
-		b.SendMessage(chatID, "⏳ That menu is from an earlier session. Send /start to open a fresh one.")
+		// Edit rather than send: the stale pane is still on screen, and replacing
+		// it with the explanation leaves one message instead of two. The keyboard
+		// it carried resolves to nothing, so it is replaced with a route home —
+		// which, after a restart, is the only button that can still work.
+		kb := b.menuBuilder.GetSectionResultKeyboard(menus.SectionMain)
+		b.editView(ctx, chatID, messageID, formatters.Btn(formatters.GlyphWaiting,
+			"That menu is from an earlier session. Send /start to open a fresh one."), &kb)
 		return
 	}
 
@@ -353,7 +362,7 @@ func (b *Bot) dispatchCallback(
 		b.editToMainMenu(ctx, chatID, messageID, session)
 
 	case cmdHelp:
-		b.runCommand(ctx, cmdHelp, nil, chatID, session)
+		b.showHelpPane(ctx, chatID, messageID)
 
 	case "resource":
 		b.dispatchResourceCallback(ctx, chatID, messageID, action, session)
@@ -373,9 +382,9 @@ func (b *Bot) dispatchCallback(
 	case "ctx":
 		switch action.Action {
 		case "switch":
-			b.runCommand(ctx, "use-context", []string{action.Name}, chatID, session)
+			b.switchContext(ctx, chatID, messageID, action.Name, session)
 		case "refresh":
-			b.runCommand(ctx, "contexts", nil, chatID, session)
+			b.showContextPicker(ctx, chatID, messageID)
 		}
 
 	case "action":
@@ -390,13 +399,14 @@ func (b *Bot) dispatchCallback(
 // so inline buttons and typed commands share one implementation.
 func (b *Bot) runCommand(ctx context.Context, cmd string, args []string, chatID int64, session *types.UserSession) {
 	if !b.IsCommandAllowed(cmd) {
-		b.SendMessage(chatID, fmt.Sprintf("❌ Command /%s is not allowed.", cmd))
+		b.SendMessage(chatID, formatters.Btn(formatters.GlyphBroken,
+			fmt.Sprintf("Command /%s is not allowed.", cmd)))
 		return
 	}
 	handler, ok := b.handlers[cmd]
 	if !ok {
 		b.logger.Warn("Callback referenced unknown command", zap.String("cmd", cmd))
-		b.SendMessage(chatID, fmt.Sprintf("❌ Unknown command: /%s", cmd))
+		b.SendMessage(chatID, formatters.Btn(formatters.GlyphBroken, fmt.Sprintf("Unknown command: /%s", cmd)))
 		return
 	}
 	text := "/" + cmd
@@ -411,7 +421,7 @@ func (b *Bot) runCommand(ctx context.Context, cmd string, args []string, chatID 
 	}
 	if err := handler.Handle(ctx, msg, args, session); err != nil {
 		b.logger.Error("Callback command failed", zap.String("cmd", cmd), zap.Error(err))
-		b.SendMessage(chatID, fmt.Sprintf("❌ Error: %s", err.Error()))
+		b.SendMessage(chatID, formatters.Btn(formatters.GlyphBroken, fmt.Sprintf("Error: %s", err.Error())))
 	}
 }
 
@@ -428,13 +438,12 @@ func (b *Bot) editView(ctx context.Context, chatID int64, messageID int, text st
 	}
 }
 
-func (b *Bot) editToMainMenu(ctx context.Context, chatID int64, messageID int, session *types.UserSession) {
-	session.SetMenuState(&types.MenuState{CurrentView: "main"})
-	kb := b.menuBuilder.GetMainMenuInlineKeyboard()
-	b.editView(ctx, chatID, messageID, b.mainMenuText(session), &kb)
-}
-
 // dispatchMonitorCallback handles the "menu:monitor:*" family.
+//
+// These verbs render into the pane rather than delegating to the /top and
+// /events command handlers. Those handlers send a message, which is what the
+// single pane forbids; the shared piece is the formatter, so the button and the
+// typed command still render identically.
 func (b *Bot) dispatchMonitorCallback(
 	ctx context.Context,
 	chatID int64,
@@ -445,18 +454,73 @@ func (b *Bot) dispatchMonitorCallback(
 	switch action.Action {
 	case menus.VerbHome:
 		kb := b.menuBuilder.GetMonitorInlineKeyboard()
-		b.editView(ctx, chatID, messageID, "📊 <b>Monitoring</b>\n\nPick a view.", &kb)
+		b.editView(ctx, chatID, messageID, "<b>Monitoring</b>\n\nPick a view.", &kb)
 	case "top":
 		resType := action.ResourceType
 		if resType == "" {
 			resType = kindPods
 		}
-		b.runCommand(ctx, "top", []string{resType}, chatID, session)
+		b.showTopPane(ctx, chatID, messageID, resType, session)
 	case "events":
-		b.runCommand(ctx, "events", nil, chatID, session)
+		b.showEventsPane(ctx, chatID, messageID, session)
 	case "watch":
-		b.SendMessage(chatID, "👁️ Usage: <code>/watch &lt;resource&gt; [-n namespace]</code>")
+		b.showSectionUsage(ctx, chatID, messageID, menus.SectionMonitor, "Watch",
+			"/watch <resource> [-n namespace]",
+			"Watching pushes updates as they happen, so it runs as a command rather than in this pane.")
 	}
+}
+
+// showTopPane renders resource usage for pods or nodes.
+//
+// metrics-server is optional in a cluster, so its absence is reported as the
+// expected condition it is, with the list it could show instead — rather than
+// surfacing a raw 404 the user has to interpret.
+func (b *Bot) showTopPane(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	resType string,
+	session *types.UserSession,
+) {
+	kind := menus.CanonicalResource(resType)
+	namespace := session.GetNamespace()
+	if kind == kindNodes {
+		namespace = "" // node metrics are cluster-scoped
+	}
+
+	metrics, err := b.k8sClient.ListResources(ctx, schema.GroupVersionResource{
+		Group: "metrics.k8s.io", Version: "v1beta1", Resource: kind,
+	}, namespace, "", "")
+	if err != nil {
+		b.showSectionNotice(ctx, chatID, messageID, menus.SectionMonitor,
+			"Metrics unavailable",
+			"This needs metrics-server installed in the cluster. "+err.Error())
+		return
+	}
+
+	b.showSectionPane(ctx, chatID, messageID, menus.SectionMonitor,
+		formatters.RichMetrics("Usage — "+kind, metrics),
+		fmt.Sprintf("Usage for %s: %d reporting", formatters.EscapeHTML(kind), len(metrics)))
+}
+
+// showEventsPane renders recent events for the session's namespace.
+func (b *Bot) showEventsPane(ctx context.Context, chatID int64, messageID int, session *types.UserSession) {
+	namespace := session.GetNamespace()
+	events, err := b.k8sClient.GetEvents(ctx, namespace, "")
+	if err != nil {
+		b.showSectionNotice(ctx, chatID, messageID, menus.SectionMonitor,
+			"Could not read events", err.Error())
+		return
+	}
+	if len(events) == 0 {
+		b.showSectionNotice(ctx, chatID, messageID, menus.SectionMonitor,
+			"No events in "+nsDisplay(namespace),
+			"Events expire after about an hour, so this is normal for a quiet namespace.")
+		return
+	}
+	b.showSectionPane(ctx, chatID, messageID, menus.SectionMonitor,
+		formatters.RichEvents(events),
+		fmt.Sprintf("%d event(s) in %s", len(events), formatters.EscapeHTML(nsDisplay(namespace))))
 }
 
 // dispatchOpsCallback handles the "menu:ops:*" family. These entries are
@@ -468,21 +532,25 @@ func (b *Bot) dispatchOpsCallback(
 	messageID int,
 	action *menus.CallbackAction,
 ) {
+	const pickFirst = "Open a resource from Resources and use its own button — " +
+		"this menu has nothing selected to act on."
+
 	switch action.Action {
 	case menus.VerbHome:
 		kb := b.menuBuilder.GetOperationsInlineKeyboard()
-		b.editView(ctx, chatID, messageID, "🔧 <b>Operations</b>\n\nPick an operation.", &kb)
+		b.editView(ctx, chatID, messageID, "<b>Operations</b>\n\nPick an operation.", &kb)
 	case "restart":
-		b.SendMessage(chatID, "🔄 Usage: <code>/restart deployment &lt;name&gt; [-n namespace]</code>")
+		b.showSectionUsage(ctx, chatID, messageID, menus.SectionOperations, "Restart a deployment",
+			"/restart deployment <name> [-n namespace]", "")
 	case "scale":
-		b.SendMessage(chatID,
-			"📈 Usage: <code>/scale deployment &lt;name&gt; &lt;replicas&gt; [-n namespace]</code>")
+		b.showSectionUsage(ctx, chatID, messageID, menus.SectionOperations, "Scale a deployment",
+			"/scale deployment <name> <replicas> [-n namespace]", "")
 	case "delete":
-		b.SendMessage(chatID, "🗑️ Open a resource from 📦 Resources and use its Delete button.")
+		b.showSectionNotice(ctx, chatID, messageID, menus.SectionOperations, "Delete a resource", pickFirst)
 	case "edit":
-		b.SendMessage(chatID,
-			"✏️ Open a resource from 📦 Resources and use its 📄 YAML button to view "+
-				"the live manifest. Editing from chat is not supported.")
+		b.showSectionNotice(ctx, chatID, messageID, menus.SectionOperations, "Edit a resource",
+			pickFirst+" A resource's YAML button shows the live manifest; "+
+				"applying one back from chat is not supported.")
 	}
 }
 
@@ -498,7 +566,7 @@ func (b *Bot) dispatchResourceCallback(
 	case "types":
 		session.SetMenuState(&types.MenuState{CurrentView: "resource_types"})
 		kb := b.menuBuilder.GetResourceTypeInlineKeyboard()
-		b.editView(ctx, chatID, messageID, "📦 <b>Resources</b>\n\nPick a resource type to browse.", &kb)
+		b.editView(ctx, chatID, messageID, "<b>Resources</b>\n\nPick a resource type to browse.", &kb)
 
 	case "view":
 		if action.ResourceType == "" || action.Name == "" {
@@ -539,7 +607,8 @@ func (b *Bot) listResources(
 ) {
 	gvr, known := types.ResourceMap[resourceType]
 	if !known {
-		b.SendMessage(chatID, fmt.Sprintf("❌ Unknown resource type: %s", formatters.EscapeHTML(resourceType)))
+		b.showSectionNotice(ctx, chatID, messageID, menus.SectionMain, "Unknown resource type",
+			resourceType+" is not a resource this bot knows about.")
 		return
 	}
 
@@ -556,8 +625,14 @@ func (b *Bot) listResources(
 	if err != nil {
 		b.logger.Error("Failed to list resources for menu",
 			zap.String("type", resourceType), zap.String("namespace", namespace), zap.Error(err))
-		b.SendMessage(chatID, fmt.Sprintf("❌ Failed to list %s: %s",
-			formatters.EscapeHTML(resourceType), formatters.EscapeHTML(err.Error())))
+		// Back to the type picker rather than a dead end: the list the user asked
+		// for cannot be shown, but the menu they came from still can.
+		kb := b.menuBuilder.GetResourceTypeInlineKeyboard()
+		b.editView(ctx, chatID, messageID, fmt.Sprintf(
+			"<b>%s Failed to list %s</b>\n\n%s",
+			formatters.GlyphBroken,
+			formatters.EscapeHTML(resourceType),
+			formatters.EscapeHTML(err.Error())), &kb)
 		return
 	}
 
@@ -581,7 +656,7 @@ func (b *Bot) listResources(
 	}
 	if len(resources) == 0 {
 		kb := b.menuBuilder.GetResourceTypeInlineKeyboard()
-		b.editView(ctx, chatID, messageID, fmt.Sprintf("📭 No %s found in %s.",
+		b.editView(ctx, chatID, messageID, fmt.Sprintf("No %s found in %s.",
 			formatters.EscapeHTML(resourceType), formatters.EscapeHTML(nsLabel)), &kb)
 		return
 	}
@@ -601,10 +676,10 @@ func (b *Bot) listResources(
 		end = len(resources)
 	}
 
-	rich := fmt.Sprintf("### 📦 %s in %s — %d item(s)\n\n%s",
+	rich := fmt.Sprintf("### %s in %s — %d item(s)\n\n%s",
 		resourceType, nsLabel, len(resources),
 		formatters.RichResourceList(resources[start:end], false))
-	fallbackText := fmt.Sprintf("📦 <b>%s</b> in <b>%s</b> — %d item(s)",
+	fallbackText := fmt.Sprintf("<b>%s</b> in <b>%s</b> — %d item(s)",
 		formatters.EscapeHTML(resourceType), formatters.EscapeHTML(nsLabel), len(resources))
 	b.editRichView(ctx, chatID, messageID, rich, fallbackText, &kb)
 }
@@ -675,7 +750,7 @@ func (b *Bot) dispatchNamespaceCallback(
 		}
 		kb := b.menuBuilder.GetResourceTypeInlineKeyboard()
 		b.editView(ctx, chatID, messageID, fmt.Sprintf(
-			"✅ Namespace set to <b>%s</b>\n\nPick a resource type to browse.",
+			"Namespace set to <b>%s</b>\n\nPick a resource type to browse.",
 			formatters.EscapeHTML(nsDisplay(action.Name))), &kb)
 
 	default:
@@ -686,15 +761,16 @@ func (b *Bot) dispatchNamespaceCallback(
 // showNamespacePicker lists cluster namespaces as buttons.
 func (b *Bot) showNamespacePicker(ctx context.Context, chatID int64, messageID, page int, session *types.UserSession) {
 	if b.k8sClient == nil {
-		b.SendMessage(chatID, "❌ Kubernetes client unavailable.")
+		b.showSectionNotice(ctx, chatID, messageID, menus.SectionSettings,
+			"Kubernetes client unavailable", "telectl has no connection to a cluster.")
 		return
 	}
 
 	nsResources, err := b.k8sClient.ListNamespaces(ctx, "")
 	if err != nil {
 		b.logger.Error("Failed to list namespaces for picker", zap.Error(err))
-		b.SendMessage(chatID, fmt.Sprintf("❌ Failed to list namespaces: %s",
-			formatters.EscapeHTML(err.Error())))
+		b.showSectionNotice(ctx, chatID, messageID, menus.SectionSettings,
+			"Could not list namespaces", err.Error())
 		return
 	}
 
@@ -704,13 +780,13 @@ func (b *Bot) showNamespacePicker(ctx context.Context, chatID int64, messageID, 
 	}
 	sort.Strings(names)
 
-	backTo := "menu:settings:home"
+	backTo := menus.SectionSettings
 	if st := session.GetMenuState(); st != nil && st.ResourceType != "" {
 		backTo = "menu:resource:" + st.ResourceType
 	}
 
 	kb := b.menuBuilder.GetNamespaceInlineKeyboard(names, session.GetNamespace(), page, backTo)
-	text := fmt.Sprintf("🌐 <b>Namespace</b>\n\nCurrent: <b>%s</b>\nPick one to browse its resources.",
+	text := fmt.Sprintf("<b>Namespace</b>\n\nCurrent: <b>%s</b>\nPick one to browse its resources.",
 		formatters.EscapeHTML(nsDisplay(session.GetNamespace())))
 	b.editView(ctx, chatID, messageID, text, &kb)
 }
@@ -734,17 +810,57 @@ func (b *Bot) dispatchSettingsCallback(
 	switch action.Action {
 	case menus.VerbHome:
 		kb := b.menuBuilder.GetSettingsInlineKeyboard()
-		text := fmt.Sprintf("⚙️ <b>Settings</b>\n\n<b>Context:</b> %s\n<b>Namespace:</b> %s",
+		text := fmt.Sprintf("<b>Settings</b>\n\n<b>Context:</b> %s\n<b>Namespace:</b> %s",
 			formatters.EscapeHTML(b.currentContextName(session)),
-			formatters.EscapeHTML(session.GetNamespace()))
+			formatters.EscapeHTML(nsDisplay(session.GetNamespace())))
 		b.editView(ctx, chatID, messageID, text, &kb)
 	case "context":
-		b.runCommand(ctx, "contexts", nil, chatID, session)
+		b.showContextPicker(ctx, chatID, messageID)
 	case "namespace":
 		b.showNamespacePicker(ctx, chatID, messageID, 0, session)
 	default:
-		b.SendMessage(chatID, "⚙️ That setting is not available yet.")
+		b.showSectionNotice(ctx, chatID, messageID, menus.SectionSettings,
+			"Not available yet", "That setting has no implementation.")
 	}
+}
+
+// showContextPicker lists kubeconfig contexts as buttons, in the pane.
+func (b *Bot) showContextPicker(ctx context.Context, chatID int64, messageID int) {
+	kc := b.k8sClient.GetKubeconfig()
+	if kc == nil || len(kc.Contexts) == 0 {
+		b.showSectionNotice(ctx, chatID, messageID, menus.SectionSettings,
+			"No contexts", "The kubeconfig has no contexts to switch between.")
+		return
+	}
+
+	rich := make([]formatters.KubeContext, 0, len(kc.Contexts))
+	for _, c := range kc.Contexts {
+		rich = append(rich, formatters.NewKubeContext(c.Name, c.Cluster, c.Namespace, c.Current))
+	}
+	kb := b.menuBuilder.GetContextsInlineKeyboard(kc.Contexts)
+	b.showPane(ctx, chatID, messageID, pane{
+		rich:     formatters.RichContexts(rich),
+		fallback: formatters.EscapeHTML(formatters.FormatContexts(kc.Contexts)),
+		kb:       &kb,
+	})
+}
+
+// switchContext changes the active context for this bot session.
+//
+// Session-scoped by design: it rebuilds the bot's API clients but deliberately
+// does not rewrite ~/.kube/config, which is shared with kubectl and with every
+// other user of this bot.
+func (b *Bot) switchContext(ctx context.Context, chatID int64, messageID int, name string, session *types.UserSession) {
+	if err := b.k8sClient.SwitchContext(name); err != nil {
+		b.showSectionNotice(ctx, chatID, messageID, menus.SectionSettings,
+			"Could not switch context", err.Error())
+		return
+	}
+	session.CurrentCtx = name
+	b.logger.Info("Context switched", zap.Int64("user_id", session.UserID), zap.String("context", name))
+
+	// Re-render the picker so the active marker moves to the new context.
+	b.showContextPicker(ctx, chatID, messageID)
 }
 
 // dispatchResourceAction handles the "menu:action:*" family (per-resource verbs).
@@ -761,56 +877,66 @@ func (b *Bot) dispatchResourceAction(
 		return
 	}
 
-	nsArgs := func() []string {
-		if action.Namespace != "" {
-			return []string{"-n", action.Namespace}
-		}
-		return nil
-	}
+	req := detailReqFor(chatID, messageID, action.ResourceType, action.Namespace, action.Name, session)
 
 	switch action.Action {
-	case cmdLogs:
-		// Pod log buttons built before the detail pane carried no type field.
-		if action.Name == "" {
-			return
-		}
-		b.runCommand(ctx, cmdLogs, append([]string{action.Name}, nsArgs()...), chatID, session)
-
 	case "delete":
 		if action.ResourceType == "" || action.Name == "" {
 			return
 		}
 		kb := b.menuBuilder.GetConfirmDeleteKeyboard(action.ResourceType, action.Namespace, action.Name)
 		b.editView(ctx, chatID, messageID, fmt.Sprintf(
-			"⚠️ Delete <b>%s</b> <code>%s</code> in <code>%s</code>?\n\nThis cannot be undone.",
+			"<b>Delete %s <code>%s</code> in <code>%s</code>?</b>\n\nThis cannot be undone.",
 			formatters.EscapeHTML(action.ResourceType),
 			formatters.EscapeHTML(action.Name),
-			formatters.EscapeHTML(action.Namespace)), &kb)
+			formatters.EscapeHTML(nsDisplay(action.Namespace))), &kb)
 
 	case "confirmdelete":
 		b.confirmDelete(ctx, chatID, messageID, action, session)
 
 	case "restart":
-		if action.Name == "" {
-			return
-		}
-		b.runCommand(ctx, "restart", append([]string{"deployment", action.Name}, nsArgs()...), chatID, session)
+		b.restartWorkload(ctx, req)
 
 	case "exec":
-		b.SendMessage(chatID,
-			"🖥️ Usage: <code>/exec &lt;pod&gt; [-c container] "+
-				"-n &lt;namespace&gt; -- &lt;command&gt;</code>")
+		b.showUsage(ctx, req, "Exec",
+			"/exec "+action.Name+" [-c container] -n "+nsDisplay(action.Namespace)+" -- <command>")
 
 	case "portforward":
-		b.SendMessage(chatID, "🔌 Usage: <code>/portforward &lt;pod&gt; &lt;local:remote&gt; [-n namespace]</code>")
+		b.showUsage(ctx, req, "Port forward",
+			"/portforward "+action.Name+" <local:remote> -n "+nsDisplay(action.Namespace))
 
 	default:
 		b.logger.Debug("Unhandled resource action", zap.String("action", action.Action))
-		b.SendMessage(chatID, "⚠️ That action is not available yet.")
+		b.showNotice(ctx, req, "Not available yet",
+			"That action has no implementation. This is a bug: a rendered button "+
+				"should always do something.")
 	}
 }
 
-// confirmDelete performs a delete that the user explicitly confirmed.
+// restartWorkload triggers a rolling restart, then returns to the detail pane so
+// the reported state is one the API server confirmed.
+func (b *Bot) restartWorkload(ctx context.Context, r detailReq) {
+	if r.name == "" {
+		return
+	}
+	if r.kind != kindDeployments {
+		b.showNotice(ctx, r, "Not restartable", "Only deployments can be restarted.")
+		return
+	}
+	if err := b.k8sClient.RestartDeployment(ctx, r.ns, r.name); err != nil {
+		b.reportPaneError(ctx, r, "restart deployment", err)
+		return
+	}
+	if b.k8sClient.IsDryRun() {
+		b.showNotice(ctx, r, "Dry run — restart not applied",
+			"telectl is running with dry-run enabled, so "+r.name+" was not restarted.")
+		return
+	}
+	b.showResourceDetail(ctx, r.chatID, r.messageID, r.kind, r.ns, r.name, r.session)
+}
+
+// confirmDelete performs a delete that the user explicitly confirmed, then shows
+// the list the object is now absent from — which is the confirmation.
 func (b *Bot) confirmDelete(
 	ctx context.Context,
 	chatID int64,
@@ -818,61 +944,62 @@ func (b *Bot) confirmDelete(
 	action *menus.CallbackAction,
 	session *types.UserSession,
 ) {
+	req := detailReqFor(chatID, messageID, action.ResourceType, action.Namespace, action.Name, session)
+
 	gvr, known := types.ResourceMap[action.ResourceType]
 	if !known {
-		b.SendMessage(chatID, fmt.Sprintf("❌ Unknown resource type: %s", formatters.EscapeHTML(action.ResourceType)))
+		b.showNotice(ctx, req, "Unknown resource type",
+			action.ResourceType+" is not a resource this bot knows about.")
 		return
 	}
 	if err := b.deleteResourceForMenu(ctx, gvr.GVR(), action.Namespace, action.Name); err != nil {
-		b.logger.Error("Menu delete failed",
-			zap.String("type", action.ResourceType), zap.String("name", action.Name), zap.Error(err))
-		b.SendMessage(chatID, fmt.Sprintf("❌ Delete failed: %s", formatters.EscapeHTML(err.Error())))
+		b.reportPaneError(ctx, req, "delete "+action.Name, err)
 		return
 	}
 	if b.k8sClient.IsDryRun() {
-		b.SendMessage(chatID, fmt.Sprintf("🧪 Dry run: would delete <code>%s</code>", formatters.EscapeHTML(action.Name)))
-	} else {
-		b.SendMessage(chatID, fmt.Sprintf("🗑️ Deleted <code>%s</code>", formatters.EscapeHTML(action.Name)))
+		b.showNotice(ctx, req, "Dry run — delete not applied",
+			"telectl is running with dry-run enabled, so "+action.Name+" still exists.")
+		return
 	}
 	b.listResources(ctx, chatID, messageID, action.ResourceType, action, session)
 }
 
+// handleReplyKeyboard routes a tap on the persistent bottom bar.
+//
+// A reply keyboard sends its label back as plain message text, so a tap is
+// recognised by matching that exact string. The labels come from menus rather
+// than being spelled out here: when both sides carried their own literals, a
+// relabelled button stopped matching and silently fell through to the main menu.
+// The bare lowercase spellings stay as a typed-command convenience.
 func (b *Bot) handleReplyKeyboard(ctx context.Context, msg *botmodels.Message, session *types.UserSession) bool {
-	text := msg.Text
-	switch text {
-	case "📦 Resources", "resources":
+	switch msg.Text {
+	case menus.LabelResources, "resources":
 		b.ShowResourceTypes(ctx, msg.Chat.ID, session)
 		return true
-	case "📋 Logs", cmdLogs:
-		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID,
-			"Usage: /logs <pod> [-c container] [-n namespace] [-f] [--tail N]",
-			"HTML", nil); err != nil {
-			b.logger.Error("Failed to send logs usage", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
-		}
+	case menus.LabelLogs, cmdLogs:
+		b.SendMessage(msg.Chat.ID,
+			"Usage: <code>/logs &lt;pod&gt; [-c container] [-n namespace] [-f] [--tail N]</code>")
 		return true
-	case "🖥️ Exec", "exec":
-		if _, err := b.tgBot.SendText(ctx, msg.Chat.ID,
-			"Usage: /exec <pod> [-c container] -n namespace -- <command>",
-			"HTML", nil); err != nil {
-			b.logger.Error("Failed to send exec usage", zap.Error(err), zap.Int64("chat_id", msg.Chat.ID))
-		}
+	case menus.LabelExec, "exec":
+		b.SendMessage(msg.Chat.ID,
+			"Usage: <code>/exec &lt;pod&gt; [-c container] -n &lt;namespace&gt; -- &lt;command&gt;</code>")
 		return true
-	case "⚙️ Contexts", "🌐 Contexts", "contexts":
+	case menus.LabelContexts, "contexts":
 		b.runCommand(ctx, "contexts", nil, msg.Chat.ID, session)
 		return true
-	case "🔌 Port Forward", "port forward", "portforward":
-		b.SendMessage(msg.Chat.ID, "🔌 Usage: <code>/portforward &lt;pod&gt; &lt;local:remote&gt; [-n namespace]</code>")
+	case menus.LabelPortForward, "port forward", "portforward":
+		b.SendMessage(msg.Chat.ID, "Usage: <code>/portforward &lt;pod&gt; &lt;local:remote&gt; [-n namespace]</code>")
 		return true
-	case "❓ Help", cmdHelp:
+	case menus.LabelHelp, cmdHelp:
 		b.runCommand(ctx, cmdHelp, nil, msg.Chat.ID, session)
 		return true
-	case "📊 Monitor", "monitor":
+	case menus.LabelMonitor, "monitor":
 		b.ShowMonitor(ctx, msg.Chat.ID, session)
 		return true
-	case "🔧 Operations", "operations":
+	case menus.LabelOperations, "operations":
 		b.ShowOperations(ctx, msg.Chat.ID, session)
 		return true
-	case "⚙️ Settings", "settings":
+	case menus.LabelSettings, "settings":
 		b.ShowSettings(ctx, msg.Chat.ID, session)
 		return true
 	}
@@ -903,7 +1030,7 @@ func (b *Bot) currentContextName(session *types.UserSession) string {
 }
 
 func (b *Bot) mainMenuText(session *types.UserSession) string {
-	return fmt.Sprintf(`🤖 <b>telectl</b>
+	return fmt.Sprintf(`<b>telectl</b>
 
 <b>Cluster:</b> %s
 <b>Namespace:</b> %s
@@ -938,7 +1065,7 @@ func (b *Bot) ShowResourceTypes(ctx context.Context, chatID int64, session *type
 	session.SetMenuState(&types.MenuState{CurrentView: "resource_types"})
 	kb := b.menuBuilder.GetResourceTypeInlineKeyboard()
 	if _, err := b.tgBot.SendText(ctx, chatID,
-		"📦 <b>Resources</b>\n\nPick a resource type to browse.", "HTML", &kb); err != nil {
+		"<b>Resources</b>\n\nPick a resource type to browse.", "HTML", &kb); err != nil {
 		b.logger.Error("Failed to send resource types", zap.Error(err), zap.Int64("chat_id", chatID))
 	}
 }
@@ -946,7 +1073,7 @@ func (b *Bot) ShowResourceTypes(ctx context.Context, chatID int64, session *type
 func (b *Bot) ShowMonitor(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "monitor"})
 	kb := b.menuBuilder.GetMonitorInlineKeyboard()
-	if _, err := b.tgBot.SendText(ctx, chatID, "📊 <b>Monitoring</b>\n\nPick a view.", "HTML", &kb); err != nil {
+	if _, err := b.tgBot.SendText(ctx, chatID, "<b>Monitoring</b>\n\nPick a view.", "HTML", &kb); err != nil {
 		b.logger.Error("Failed to send monitor", zap.Error(err), zap.Int64("chat_id", chatID))
 	}
 }
@@ -954,7 +1081,7 @@ func (b *Bot) ShowMonitor(ctx context.Context, chatID int64, session *types.User
 func (b *Bot) ShowOperations(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "operations"})
 	kb := b.menuBuilder.GetOperationsInlineKeyboard()
-	if _, err := b.tgBot.SendText(ctx, chatID, "🔧 <b>Operations</b>\n\nPick an operation.", "HTML", &kb); err != nil {
+	if _, err := b.tgBot.SendText(ctx, chatID, "<b>Operations</b>\n\nPick an operation.", "HTML", &kb); err != nil {
 		b.logger.Error("Failed to send operations", zap.Error(err), zap.Int64("chat_id", chatID))
 	}
 }
@@ -962,7 +1089,7 @@ func (b *Bot) ShowOperations(ctx context.Context, chatID int64, session *types.U
 func (b *Bot) ShowSettings(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "settings"})
 	kb := b.menuBuilder.GetSettingsInlineKeyboard()
-	text := fmt.Sprintf("⚙️ <b>Settings</b>\n\n<b>Context:</b> %s\n<b>Namespace:</b> %s",
+	text := fmt.Sprintf("<b>Settings</b>\n\n<b>Context:</b> %s\n<b>Namespace:</b> %s",
 		formatters.EscapeHTML(b.currentContextName(session)),
 		formatters.EscapeHTML(session.GetNamespace()))
 	if _, err := b.tgBot.SendText(ctx, chatID, text, "HTML", &kb); err != nil {

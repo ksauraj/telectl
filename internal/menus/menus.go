@@ -8,7 +8,28 @@ import (
 	"github.com/ksauraj/telectl/internal/k8s"
 	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
+	f "github.com/ksauraj/telectl/internal/utils/formatters"
 	"github.com/ksauraj/telectl/pkg/kubeconfig"
+)
+
+// Reply-keyboard labels.
+//
+// A reply keyboard sends its label back as ordinary message text, so the bot
+// recognises a tap by comparing against the exact string it rendered. That makes
+// these labels a wire contract between this file and the bot's
+// handleReplyKeyboard, not decoration: when they were literals in both places, a
+// label edited here silently stopped matching there and the button did nothing.
+// Declared once, referenced from both sides.
+var (
+	LabelResources   = f.Btn(f.GlyphAction, "Resources")
+	LabelLogs        = f.Btn(f.GlyphAction, "Logs")
+	LabelExec        = f.Btn(f.GlyphAction, "Exec")
+	LabelPortForward = f.Btn(f.GlyphAction, "Port Forward")
+	LabelContexts    = f.Btn(f.GlyphAction, "Contexts")
+	LabelMonitor     = f.Btn(f.GlyphAction, "Monitor")
+	LabelOperations  = f.Btn(f.GlyphAction, "Operations")
+	LabelSettings    = f.Btn(f.GlyphAction, "Settings")
+	LabelHelp        = f.Btn(f.GlyphAction, "Help")
 )
 
 // Row widths used by the keyboard builders. Telegram renders inline buttons
@@ -56,16 +77,19 @@ func (mb *MenuBuilder) ResolveCallback(data string) (string, bool) {
 // ============================================================================
 
 // GetBotCommands returns the list of commands for the bot menu button.
+//
+// Telegram renders these as a plain command list, not as buttons, so they carry
+// no action marker — a glyph here would be decoration with nothing to mark.
 func (mb *MenuBuilder) GetBotCommands() []tg.BotCommand {
 	return []tg.BotCommand{
-		{Command: "resources", Description: "📦 Browse Resources"},
-		{Command: "logs", Description: "📋 View Logs"},
-		{Command: "exec", Description: "🖥️ Execute Commands"},
-		{Command: "contexts", Description: "⚙️ Manage Contexts"},
-		{Command: "monitor", Description: "📊 Monitoring"},
-		{Command: "operations", Description: "🔧 Operations"},
-		{Command: "settings", Description: "⚙️ Settings"},
-		{Command: "help", Description: "❓ Help & Commands"},
+		{Command: "resources", Description: "Browse resources"},
+		{Command: "logs", Description: "View pod logs"},
+		{Command: "exec", Description: "Run a command in a pod"},
+		{Command: "contexts", Description: "Switch kubeconfig context"},
+		{Command: "monitor", Description: "Monitoring"},
+		{Command: "operations", Description: "Operations"},
+		{Command: "settings", Description: "Settings"},
+		{Command: "help", Description: "Help and command reference"},
 	}
 }
 
@@ -77,19 +101,19 @@ func (mb *MenuBuilder) GetBotCommands() []tg.BotCommand {
 func (mb *MenuBuilder) GetMainReplyKeyboard() tg.ReplyKeyboardMarkup {
 	keyboard := tg.ReplyKeyboard(
 		tg.KeyboardButtonRow(
-			tg.KeyboardButtonText("📦 Resources"),
-			tg.KeyboardButtonText("📋 Logs"),
-			tg.KeyboardButtonText("🖥️ Exec"),
+			tg.KeyboardButtonText(LabelResources),
+			tg.KeyboardButtonText(LabelLogs),
+			tg.KeyboardButtonText(LabelExec),
 		),
 		tg.KeyboardButtonRow(
-			tg.KeyboardButtonText("🔌 Port Forward"),
-			tg.KeyboardButtonText("⚙️ Contexts"),
-			tg.KeyboardButtonText("📊 Monitor"),
+			tg.KeyboardButtonText(LabelPortForward),
+			tg.KeyboardButtonText(LabelContexts),
+			tg.KeyboardButtonText(LabelMonitor),
 		),
 		tg.KeyboardButtonRow(
-			tg.KeyboardButtonText("🔧 Operations"),
-			tg.KeyboardButtonText("⚙️ Settings"),
-			tg.KeyboardButtonText("❓ Help"),
+			tg.KeyboardButtonText(LabelOperations),
+			tg.KeyboardButtonText(LabelSettings),
+			tg.KeyboardButtonText(LabelHelp),
 		),
 	)
 	keyboard.ResizeKeyboard = true
@@ -102,24 +126,24 @@ func (mb *MenuBuilder) GetMainReplyKeyboard() tg.ReplyKeyboardMarkup {
 func (mb *MenuBuilder) GetResourceTypeReplyKeyboard() tg.ReplyKeyboardMarkup {
 	keyboard := tg.ReplyKeyboard(
 		tg.KeyboardButtonRow(
-			tg.KeyboardButtonText("📦 Pods"),
-			tg.KeyboardButtonText("🚀 Deployments"),
-			tg.KeyboardButtonText("🔌 Services"),
+			tg.KeyboardButtonText(f.Btn(f.GlyphAction, "Pods")),
+			tg.KeyboardButtonText(f.Btn(f.GlyphAction, "Deployments")),
+			tg.KeyboardButtonText(f.Btn(f.GlyphAction, "Services")),
 		),
 		tg.KeyboardButtonRow(
-			tg.KeyboardButtonText("📋 ReplicaSets"),
-			tg.KeyboardButtonText("📁 Namespaces"),
-			tg.KeyboardButtonText("🖥️ Nodes"),
+			tg.KeyboardButtonText(f.Btn(f.GlyphAction, "ReplicaSets")),
+			tg.KeyboardButtonText(f.Btn(f.GlyphAction, "Namespaces")),
+			tg.KeyboardButtonText(f.Btn(f.GlyphAction, "Nodes")),
 		),
 		tg.KeyboardButtonRow(
-			tg.KeyboardButtonText("⚙️ ConfigMaps"),
-			tg.KeyboardButtonText("🔐 Secrets"),
-			tg.KeyboardButtonText("💾 PVCs"),
+			tg.KeyboardButtonText(f.Btn(f.GlyphAction, "ConfigMaps")),
+			tg.KeyboardButtonText(f.Btn(f.GlyphAction, "Secrets")),
+			tg.KeyboardButtonText(f.Btn(f.GlyphAction, "PVCs")),
 		),
 		tg.KeyboardButtonRow(
-			tg.KeyboardButtonText("🌐 Ingresses"),
-			tg.KeyboardButtonText("📅 Events"),
-			tg.KeyboardButtonText("🔙 Back"),
+			tg.KeyboardButtonText(f.Btn(f.GlyphAction, "Ingresses")),
+			tg.KeyboardButtonText(f.Btn(f.GlyphAction, "Events")),
+			tg.KeyboardButtonText(f.Btn(f.GlyphBack, "Back")),
 		),
 	)
 	keyboard.ResizeKeyboard = true
@@ -134,12 +158,12 @@ func (mb *MenuBuilder) GetNamespaceReplyKeyboard(namespaces []string, currentNS 
 	currentRow := make([]tg.KeyboardButton, 0, replyKeyboardCols)
 
 	// Add "All Namespaces" button
-	currentRow = append(currentRow, tg.KeyboardButtonText("🌐 All Namespaces"))
+	currentRow = append(currentRow, tg.KeyboardButtonText("All namespaces"))
 
 	for _, ns := range namespaces {
 		label := ns
 		if ns == currentNS {
-			label = "✅ " + ns
+			label = f.Btn(f.GlyphSelected, ns)
 		}
 		currentRow = append(currentRow, tg.KeyboardButtonText(label))
 
@@ -154,8 +178,8 @@ func (mb *MenuBuilder) GetNamespaceReplyKeyboard(namespaces []string, currentNS 
 	}
 
 	rows = append(rows, tg.KeyboardButtonRow(
-		tg.KeyboardButtonText("🔙 Back"),
-		tg.KeyboardButtonText("➕ New Namespace"),
+		tg.KeyboardButtonText(f.Btn(f.GlyphBack, "Back")),
+		tg.KeyboardButtonText("New namespace"),
 	))
 
 	keyboard := tg.ReplyKeyboard(rows...)
@@ -173,27 +197,27 @@ func (mb *MenuBuilder) GetNamespaceReplyKeyboard(namespaces []string, currentNS 
 func (mb *MenuBuilder) GetResourceTypeInlineKeyboard() tg.InlineKeyboardMarkup {
 	return tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			mb.btn("📦 Pods", "menu:resource:pods"),
-			mb.btn("🚀 Deployments", "menu:resource:deployments"),
-			mb.btn("🔌 Services", "menu:resource:services"),
+			mb.btn(f.Btn(f.GlyphAction, "Pods"), "menu:resource:pods"),
+			mb.btn(f.Btn(f.GlyphAction, "Deployments"), "menu:resource:deployments"),
+			mb.btn(f.Btn(f.GlyphAction, "Services"), "menu:resource:services"),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn("📋 ReplicaSets", "menu:resource:replicasets"),
-			mb.btn("📁 Namespaces", "menu:resource:namespaces"),
-			mb.btn("🖥️ Nodes", "menu:resource:nodes"),
+			mb.btn(f.Btn(f.GlyphAction, "ReplicaSets"), "menu:resource:replicasets"),
+			mb.btn(f.Btn(f.GlyphAction, "Namespaces"), "menu:resource:namespaces"),
+			mb.btn(f.Btn(f.GlyphAction, "Nodes"), "menu:resource:nodes"),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn("⚙️ ConfigMaps", "menu:resource:configmaps"),
-			mb.btn("🔐 Secrets", "menu:resource:secrets"),
-			mb.btn("💾 PVCs", "menu:resource:pvcs"),
+			mb.btn(f.Btn(f.GlyphAction, "ConfigMaps"), "menu:resource:configmaps"),
+			mb.btn(f.Btn(f.GlyphAction, "Secrets"), "menu:resource:secrets"),
+			mb.btn(f.Btn(f.GlyphAction, "PVCs"), "menu:resource:pvcs"),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn("🌐 Ingresses", "menu:resource:ingresses"),
-			mb.btn("📅 Events", "menu:resource:events"),
-			mb.btn("💾 PVs", "menu:resource:pvs"),
+			mb.btn(f.Btn(f.GlyphAction, "Ingresses"), "menu:resource:ingresses"),
+			mb.btn(f.Btn(f.GlyphAction, "Events"), "menu:resource:events"),
+			mb.btn(f.Btn(f.GlyphAction, "PVs"), "menu:resource:pvs"),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn("🔙 Main Menu", "menu:main"),
+			mb.btn(f.Btn(f.GlyphHome, "Main Menu"), "menu:main"),
 		),
 	)
 }
@@ -240,17 +264,17 @@ func (mb *MenuBuilder) GetResourceListInlineKeyboard(
 	totalPages := (len(resources) + pageSize - 1) / pageSize
 
 	if page > 0 {
-		paginationRow = append(paginationRow, mb.btn("⬅️ Prev",
+		paginationRow = append(paginationRow, mb.btn(f.Btn(f.GlyphPrev, "Prev"),
 			"menu:resource:page:"+resourceType+":"+namespace+":"+strconv.Itoa(page-1)))
 	}
 
 	paginationRow = append(paginationRow, mb.btn(
-		"📄 "+strconv.Itoa(page+1)+"/"+strconv.Itoa(totalPages),
+		strconv.Itoa(page+1)+"/"+strconv.Itoa(totalPages),
 		"menu:noop",
 	))
 
 	if page+1 < totalPages {
-		paginationRow = append(paginationRow, mb.btn("Next ➡️",
+		paginationRow = append(paginationRow, mb.btn(f.Btn(f.GlyphNext, "Next"),
 			"menu:resource:page:"+resourceType+":"+namespace+":"+strconv.Itoa(page+1)))
 	}
 
@@ -260,34 +284,79 @@ func (mb *MenuBuilder) GetResourceListInlineKeyboard(
 
 	// Action row
 	rows = append(rows, tg.InlineKeyboardRow(
-		mb.btn("🔄 Refresh", "menu:resource:refresh:"+resourceType+":"+namespace),
+		mb.btn(f.Btn(f.GlyphRefresh, "Refresh"), "menu:resource:refresh:"+resourceType+":"+namespace),
 		mb.btn(nsButtonLabel(namespace), "menu:ns:pick:"+resourceType),
-		mb.btn("🔙 Types", "menu:resource:types"),
+		mb.btn(f.Btn(f.GlyphBack, "Types"), "menu:resource:types"),
 	))
 
 	return tg.InlineKeyboard(rows...)
 }
 
+// formatResourceButton labels a resource button with its status glyph and name.
+//
+// The status switch this used to carry was a second, drifted copy of
+// formatters.StatusGlyph: it was case-sensitive (so a lowercase "running" fell
+// through to the unknown glyph) and it knew nothing of "Bound" or "Available",
+// so a healthy PVC rendered as unknown in the button while the table beside it
+// showed it as healthy. One status vocabulary, one function.
 func (mb *MenuBuilder) formatResourceButton(r k8s.ResourceInfo) string {
-	statusIcon := "⚪"
-	switch r.Status {
-	case "Running", "Active", "Ready":
-		statusIcon = "🟢"
-	case "Pending", "Creating":
-		statusIcon = "🟡"
-	case "Failed", "Error", "CrashLoopBackOff":
-		statusIcon = "🔴"
-	case "Succeeded", "Completed":
-		statusIcon = "🔵"
-	case "Terminating":
-		statusIcon = "🟠"
+	// Rune-aware: a byte slice can split a multi-byte character, and Telegram
+	// rejects a keyboard whose label is invalid UTF-8.
+	return f.Btn(f.StatusGlyph(r.Status), f.TruncateString(r.Name, 20))
+}
+
+// Section callback data, exported so the bot names a section with the same
+// string this package routes on.
+const (
+	SectionMonitor    = "menu:monitor:home"
+	SectionOperations = "menu:ops:home"
+	SectionSettings   = "menu:settings:home"
+	SectionMain       = "menu:main"
+)
+
+// GetSectionResultKeyboard is the keyboard under output that belongs to a
+// top-level section rather than to a resource: back to that section, or home.
+func (mb *MenuBuilder) GetSectionResultKeyboard(section string) tg.InlineKeyboardMarkup {
+	if section == "" || section == SectionMain {
+		return tg.InlineKeyboard(tg.InlineKeyboardRow(
+			mb.btn(f.Btn(f.GlyphHome, "Main"), SectionMain),
+		))
+	}
+	return tg.InlineKeyboard(tg.InlineKeyboardRow(
+		mb.btn(f.Btn(f.GlyphBack, "Back"), section),
+		mb.btn(f.Btn(f.GlyphHome, "Main"), SectionMain),
+	))
+}
+
+// GetVerbResultKeyboard is the keyboard under a verb's output: back to the
+// resource the verb was invoked on, out to its list, or home.
+//
+// Every verb result carries this. Verb output used to arrive as a bare message
+// with no keyboard at all, so the only way to continue was to scroll back up to
+// a pane from several taps earlier — which is exactly the problem the single
+// pane exists to fix. A view with no way out is a dead end.
+//
+// A cluster-scoped kind has no namespace, so its list link omits one; passing a
+// namespace for such a kind would produce a list callback the dispatcher then
+// resolves to an empty result.
+func (mb *MenuBuilder) GetVerbResultKeyboard(kind, namespace, name string) tg.InlineKeyboardMarkup {
+	if types.IsClusterScoped(kind) {
+		namespace = ""
 	}
 
-	name := r.Name
-	if len(name) > 20 {
-		name = name[:17] + "..."
+	// With no resource to go back to there is nothing to render but the way
+	// home — better than a Back button that resolves to nothing.
+	if kind == "" || name == "" {
+		return tg.InlineKeyboard(tg.InlineKeyboardRow(
+			mb.btn(f.Btn(f.GlyphHome, "Main"), "menu:main"),
+		))
 	}
-	return statusIcon + " " + name
+
+	return tg.InlineKeyboard(tg.InlineKeyboardRow(
+		mb.btn(f.Btn(f.GlyphBack, shortLabel(name, 14)), "menu:resource:view:"+kind+":"+namespace+":"+name),
+		mb.btn(f.Btn(f.GlyphList, "List"), "menu:resource:list:"+kind+":"+namespace),
+		mb.btn(f.Btn(f.GlyphHome, "Main"), "menu:main"),
+	))
 }
 
 // GetResourceActionInlineKeyboard returns the detail pane for one resource:
@@ -314,23 +383,23 @@ func (mb *MenuBuilder) GetResourceActionInlineKeyboard(
 
 	// Inspection verbs, meaningful for every kind.
 	rows = append(rows, tg.InlineKeyboardRow(
-		mb.btn("📝 Describe", act("describe")),
-		mb.btn("🏷️ Labels", act("labels")),
-		mb.btn("📅 Events", act("events")),
+		mb.btn(f.Btn(f.GlyphAction, "Describe"), act("describe")),
+		mb.btn(f.Btn(f.GlyphAction, "Labels"), act("labels")),
+		mb.btn(f.Btn(f.GlyphAction, "Events"), act("events")),
 	))
 
 	rows = append(rows, mb.kindActionRows(kind, name, resource, act)...)
 
 	// Destructive verb kept on its own row so it is not tapped by accident.
 	rows = append(rows, tg.InlineKeyboardRow(
-		mb.btn("🗑️ Delete", act("delete")),
+		mb.btn(f.Btn(f.GlyphDestructive, "Delete"), act("delete")),
 	))
 
 	rows = append(rows, tg.InlineKeyboardRow(
-		mb.btn("🔄 Refresh", "menu:resource:view:"+kind+":"+namespace+":"+name),
-		mb.btn("🔙 List", "menu:resource:list:"+kind+":"+namespace),
-		mb.btn("❓ Help", act("help")),
-		mb.btn("🏠 Main", "menu:main"),
+		mb.btn(f.Btn(f.GlyphRefresh, "Refresh"), "menu:resource:view:"+kind+":"+namespace+":"+name),
+		mb.btn(f.Btn(f.GlyphList, "List"), "menu:resource:list:"+kind+":"+namespace),
+		mb.btn(f.Btn(f.GlyphAction, "Help"), act("help")),
+		mb.btn(f.Btn(f.GlyphHome, "Main"), "menu:main"),
 	))
 
 	return tg.InlineKeyboard(rows...)
@@ -350,15 +419,15 @@ func (mb *MenuBuilder) kindActionRows(
 	switch kind {
 	case "pods":
 		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("📋 Logs", act("logsopts")),
-			mb.btn("🖥️ Exec", act("exec")),
-			mb.btn("🔌 Forward", act("portforward")),
+			mb.btn(f.Btn(f.GlyphAction, "Logs"), act("logsopts")),
+			mb.btn(f.Btn(f.GlyphAction, "Exec"), act("exec")),
+			mb.btn(f.Btn(f.GlyphAction, "Forward"), act("portforward")),
 		))
 		// One log button per container, but only when there is a choice to make.
 		if names := podContainerNames(resource); len(names) > 1 {
 			row := make([]tg.InlineKeyboardButton, 0, namespaceCols)
 			for _, c := range names {
-				row = append(row, mb.btn("📄 "+c, act("logs", c)))
+				row = append(row, mb.btn(f.Btn(f.GlyphAction, c), act("logs", c)))
 				if len(row) == namespaceCols {
 					rows = append(rows, row)
 					row = nil
@@ -370,60 +439,60 @@ func (mb *MenuBuilder) kindActionRows(
 		}
 		if node := podNodeName(resource); node != "" {
 			rows = append(rows, tg.InlineKeyboardRow(
-				mb.btn("🖥️ Node: "+shortLabel(node, 16), "menu:resource:view:nodes::"+node),
+				mb.btn(f.Btn(f.GlyphAction, "Node: "+shortLabel(node, 16)), "menu:resource:view:nodes::"+node),
 			))
 		}
 
 	case "deployments":
 		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("🔄 Restart", act("restart")),
-			mb.btn("📈 Scale", act("scale")),
-			mb.btn("📋 Pods", act("pods")),
+			mb.btn(f.Btn(f.GlyphAction, "Restart"), act("restart")),
+			mb.btn(f.Btn(f.GlyphAction, "Scale"), act("scale")),
+			mb.btn(f.Btn(f.GlyphAction, "Pods"), act("pods")),
 		))
 		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("🎯 Selector", act("selector")),
-			mb.btn("📜 History", act("history")),
-			mb.btn("📄 YAML", act("edit")),
+			mb.btn(f.Btn(f.GlyphAction, "Selector"), act("selector")),
+			mb.btn(f.Btn(f.GlyphAction, "History"), act("history")),
+			mb.btn(f.Btn(f.GlyphAction, "YAML"), act("edit")),
 		))
 
 	case "replicasets":
 		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("📋 Pods", act("rspods")),
-			mb.btn("📈 Scale", act("rsscale")),
-			mb.btn("🎯 Selector", act("selector")),
+			mb.btn(f.Btn(f.GlyphAction, "Pods"), act("rspods")),
+			mb.btn(f.Btn(f.GlyphAction, "Scale"), act("rsscale")),
+			mb.btn(f.Btn(f.GlyphAction, "Selector"), act("selector")),
 		))
 
 	case "services":
 		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("📋 Endpoints", act("endpoints")),
-			mb.btn("🎯 Selector", act("selector")),
-			mb.btn("🔌 Forward", act("portforward")),
+			mb.btn(f.Btn(f.GlyphAction, "Endpoints"), act("endpoints")),
+			mb.btn(f.Btn(f.GlyphAction, "Selector"), act("selector")),
+			mb.btn(f.Btn(f.GlyphAction, "Forward"), act("portforward")),
 		))
 
 	case "nodes":
 		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("📊 Top", act("top")),
-			mb.btn("📋 Pods", act("nodepods")),
+			mb.btn(f.Btn(f.GlyphAction, "Top"), act("top")),
+			mb.btn(f.Btn(f.GlyphAction, "Pods"), act("nodepods")),
 		))
 		// Cordon and uncordon are opposites; showing only the one that would
 		// change something makes the node's current state readable from the
 		// keyboard alone.
 		if nodeIsCordoned(resource) {
 			rows = append(rows, tg.InlineKeyboardRow(
-				mb.btn("🔓 Uncordon", act("uncordon")),
-				mb.btn("💤 Drain", act("drain")),
+				mb.btn(f.Btn(f.GlyphAction, "Uncordon"), act("uncordon")),
+				mb.btn(f.Btn(f.GlyphAction, "Drain"), act("drain")),
 			))
 		} else {
 			rows = append(rows, tg.InlineKeyboardRow(
-				mb.btn("🔧 Cordon", act("cordon")),
-				mb.btn("💤 Drain", act("drain")),
+				mb.btn(f.Btn(f.GlyphAction, "Cordon"), act("cordon")),
+				mb.btn(f.Btn(f.GlyphAction, "Drain"), act("drain")),
 			))
 		}
 
 	case "namespaces":
 		rows = append(rows, tg.InlineKeyboardRow(
-			mb.btn("📋 Resources", act("nsresources")),
-			mb.btn("🌐 Switch to", "menu:ns:set:"+name),
+			mb.btn(f.Btn(f.GlyphAction, "Resources"), act("nsresources")),
+			mb.btn(f.Btn(f.GlyphAction, "Switch to"), "menu:ns:set:"+name),
 		))
 	}
 
@@ -513,7 +582,7 @@ func (mb *MenuBuilder) GetContextsInlineKeyboard(contexts []kubeconfig.ContextIn
 	for _, ctx := range contexts {
 		label := ctx.Name
 		if ctx.Current {
-			label = "✅ " + label
+			label = f.Btn(f.GlyphSelected, label)
 		}
 		rows = append(rows, tg.InlineKeyboardRow(
 			mb.btn(label, "menu:ctx:switch:"+ctx.Name),
@@ -521,8 +590,8 @@ func (mb *MenuBuilder) GetContextsInlineKeyboard(contexts []kubeconfig.ContextIn
 	}
 
 	rows = append(rows, tg.InlineKeyboardRow(
-		mb.btn("🔄 Refresh", "menu:ctx:refresh"),
-		mb.btn("🏠 Main", "menu:main"),
+		mb.btn(f.Btn(f.GlyphRefresh, "Refresh"), "menu:ctx:refresh"),
+		mb.btn(f.Btn(f.GlyphHome, "Main"), "menu:main"),
 	))
 
 	return tg.InlineKeyboard(rows...)
@@ -542,9 +611,9 @@ func (mb *MenuBuilder) GetNamespaceInlineKeyboard(
 
 	var rows [][]tg.InlineKeyboardButton
 
-	allLabel := "🌐 All Namespaces"
+	allLabel := "All namespaces"
 	if current == "" {
-		allLabel = "✅ 🌐 All Namespaces"
+		allLabel = f.Btn(f.GlyphSelected, "All namespaces")
 	}
 	rows = append(rows, tg.InlineKeyboardRow(mb.btn(allLabel, "menu:ns:set:")))
 
@@ -561,7 +630,7 @@ func (mb *MenuBuilder) GetNamespaceInlineKeyboard(
 	for _, ns := range namespaces[start:end] {
 		label := ns
 		if ns == current {
-			label = "✅ " + ns
+			label = f.Btn(f.GlyphSelected, ns)
 		}
 		row = append(row, mb.btn(label, "menu:ns:set:"+ns))
 		if len(row) == namespaceCols {
@@ -577,11 +646,11 @@ func (mb *MenuBuilder) GetNamespaceInlineKeyboard(
 	if totalPages > 1 {
 		var nav []tg.InlineKeyboardButton
 		if page > 0 {
-			nav = append(nav, mb.btn("⬅️ Prev", "menu:ns:page:"+strconv.Itoa(page-1)))
+			nav = append(nav, mb.btn(f.Btn(f.GlyphPrev, "Prev"), "menu:ns:page:"+strconv.Itoa(page-1)))
 		}
-		nav = append(nav, mb.btn("📄 "+strconv.Itoa(page+1)+"/"+strconv.Itoa(totalPages), "menu:noop"))
+		nav = append(nav, mb.btn(strconv.Itoa(page+1)+"/"+strconv.Itoa(totalPages), "menu:noop"))
 		if page+1 < totalPages {
-			nav = append(nav, mb.btn("Next ➡️", "menu:ns:page:"+strconv.Itoa(page+1)))
+			nav = append(nav, mb.btn(f.Btn(f.GlyphNext, "Next"), "menu:ns:page:"+strconv.Itoa(page+1)))
 		}
 		rows = append(rows, nav)
 	}
@@ -589,7 +658,7 @@ func (mb *MenuBuilder) GetNamespaceInlineKeyboard(
 	if backTo == "" {
 		backTo = "menu:main"
 	}
-	rows = append(rows, tg.InlineKeyboardRow(mb.btn("🔙 Back", backTo)))
+	rows = append(rows, tg.InlineKeyboardRow(mb.btn(f.Btn(f.GlyphBack, "Back"), backTo)))
 
 	return tg.InlineKeyboard(rows...)
 }
@@ -599,15 +668,15 @@ func (mb *MenuBuilder) GetNamespaceInlineKeyboard(
 func (mb *MenuBuilder) GetMainMenuInlineKeyboard() tg.InlineKeyboardMarkup {
 	return tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			mb.btn("📦 Resources", "menu:resource:types"),
-			mb.btn("📊 Monitor", "menu:monitor:home"),
+			mb.btn(f.Btn(f.GlyphAction, "Resources"), "menu:resource:types"),
+			mb.btn(f.Btn(f.GlyphAction, "Monitor"), "menu:monitor:home"),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn("🔧 Operations", "menu:ops:home"),
-			mb.btn("⚙️ Settings", "menu:settings:home"),
+			mb.btn(f.Btn(f.GlyphAction, "Operations"), "menu:ops:home"),
+			mb.btn(f.Btn(f.GlyphAction, "Settings"), "menu:settings:home"),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn("❓ Help", "menu:help"),
+			mb.btn(f.Btn(f.GlyphAction, "Help"), "menu:help"),
 		),
 	)
 }
@@ -616,15 +685,15 @@ func (mb *MenuBuilder) GetMainMenuInlineKeyboard() tg.InlineKeyboardMarkup {
 func (mb *MenuBuilder) GetMonitorInlineKeyboard() tg.InlineKeyboardMarkup {
 	return tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			mb.btn("📊 Top Pods", "menu:monitor:top:pods"),
-			mb.btn("🖥️ Top Nodes", "menu:monitor:top:nodes"),
+			mb.btn(f.Btn(f.GlyphAction, "Top Pods"), "menu:monitor:top:pods"),
+			mb.btn(f.Btn(f.GlyphAction, "Top Nodes"), "menu:monitor:top:nodes"),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn("📅 Events", "menu:monitor:events"),
-			mb.btn("👁️ Watch", "menu:monitor:watch"),
+			mb.btn(f.Btn(f.GlyphAction, "Events"), "menu:monitor:events"),
+			mb.btn(f.Btn(f.GlyphAction, "Watch"), "menu:monitor:watch"),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn("🔙 Main", "menu:main"),
+			mb.btn(f.Btn(f.GlyphHome, "Main"), "menu:main"),
 		),
 	)
 }
@@ -633,15 +702,15 @@ func (mb *MenuBuilder) GetMonitorInlineKeyboard() tg.InlineKeyboardMarkup {
 func (mb *MenuBuilder) GetOperationsInlineKeyboard() tg.InlineKeyboardMarkup {
 	return tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			mb.btn("🔄 Restart Deployment", "menu:ops:restart"),
-			mb.btn("📈 Scale Deployment", "menu:ops:scale"),
+			mb.btn(f.Btn(f.GlyphAction, "Restart Deployment"), "menu:ops:restart"),
+			mb.btn(f.Btn(f.GlyphAction, "Scale Deployment"), "menu:ops:scale"),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn("🗑️ Delete Resource", "menu:ops:delete"),
-			mb.btn("✏️ Edit Resource", "menu:ops:edit"),
+			mb.btn(f.Btn(f.GlyphAction, "Delete Resource"), "menu:ops:delete"),
+			mb.btn(f.Btn(f.GlyphAction, "Edit Resource"), "menu:ops:edit"),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn("🏠 Main", "menu:main"),
+			mb.btn(f.Btn(f.GlyphHome, "Main"), "menu:main"),
 		),
 	)
 }
@@ -650,15 +719,15 @@ func (mb *MenuBuilder) GetOperationsInlineKeyboard() tg.InlineKeyboardMarkup {
 func (mb *MenuBuilder) GetSettingsInlineKeyboard() tg.InlineKeyboardMarkup {
 	return tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			mb.btn("🌐 Namespace", "menu:settings:namespace"),
-			mb.btn("⚙️ Context", "menu:settings:context"),
+			mb.btn(f.Btn(f.GlyphAction, "Namespace"), "menu:settings:namespace"),
+			mb.btn(f.Btn(f.GlyphAction, "Context"), "menu:settings:context"),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn("🎨 Theme", "menu:settings:theme"),
-			mb.btn("🔔 Notifications", "menu:settings:notifications"),
+			mb.btn(f.Btn(f.GlyphAction, "Theme"), "menu:settings:theme"),
+			mb.btn(f.Btn(f.GlyphAction, "Notifications"), "menu:settings:notifications"),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn("🏠 Main", "menu:main"),
+			mb.btn(f.Btn(f.GlyphHome, "Main"), "menu:main"),
 		),
 	)
 }
@@ -667,8 +736,8 @@ func (mb *MenuBuilder) GetSettingsInlineKeyboard() tg.InlineKeyboardMarkup {
 func (mb *MenuBuilder) GetConfirmDeleteKeyboard(resourceType, namespace, name string) tg.InlineKeyboardMarkup {
 	return tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			mb.btn("✅ Yes, Delete", "menu:action:confirmdelete:"+resourceType+":"+namespace+":"+name),
-			mb.btn("❌ Cancel", "menu:resource:view:"+resourceType+":"+namespace+":"+name),
+			mb.btn(f.Btn(f.GlyphDestructive, "Yes, delete"), "menu:action:confirmdelete:"+resourceType+":"+namespace+":"+name),
+			mb.btn(f.Btn(f.GlyphCancel, "Cancel"), "menu:resource:view:"+resourceType+":"+namespace+":"+name),
 		),
 	)
 }
@@ -685,7 +754,7 @@ func (mb *MenuBuilder) GetScaleKeyboard(kind, namespace, name string, currentRep
 	for _, r := range quickScales {
 		label := strconv.Itoa(int(r))
 		if r == currentReplicas {
-			label = "✅ " + label
+			label = f.Btn(f.GlyphSelected, label)
 		}
 		scaleRow = append(scaleRow, mb.btn(label, actionData("scaleset", kind, namespace, name, strconv.Itoa(int(r)))))
 		if len(scaleRow) == scaleCols {
@@ -699,8 +768,8 @@ func (mb *MenuBuilder) GetScaleKeyboard(kind, namespace, name string, currentRep
 
 	// Custom scale
 	rows = append(rows, tg.InlineKeyboardRow(
-		mb.btn("✏️ Custom", actionData("scalecustom", kind, namespace, name)),
-		mb.btn("🔙 Back", "menu:resource:view:"+kind+":"+namespace+":"+name),
+		mb.btn(f.Btn(f.GlyphAction, "Custom"), actionData("scalecustom", kind, namespace, name)),
+		mb.btn(f.Btn(f.GlyphBack, "Back"), "menu:resource:view:"+kind+":"+namespace+":"+name),
 	))
 
 	return tg.InlineKeyboard(rows...)
@@ -711,16 +780,16 @@ func (mb *MenuBuilder) GetScaleKeyboard(kind, namespace, name string, currentRep
 func (mb *MenuBuilder) GetLogOptionsKeyboard(namespace, name, container string) tg.InlineKeyboardMarkup {
 	return tg.InlineKeyboard(
 		tg.InlineKeyboardRow(
-			mb.btn("📋 Last 50", actionData("logs", "pods", namespace, name, container, "50")),
-			mb.btn("📋 Last 100", actionData("logs", "pods", namespace, name, container, "100")),
-			mb.btn("📋 Last 500", actionData("logs", "pods", namespace, name, container, "500")),
+			mb.btn(f.Btn(f.GlyphAction, "Last 50"), actionData("logs", "pods", namespace, name, container, "50")),
+			mb.btn(f.Btn(f.GlyphAction, "Last 100"), actionData("logs", "pods", namespace, name, container, "100")),
+			mb.btn(f.Btn(f.GlyphAction, "Last 500"), actionData("logs", "pods", namespace, name, container, "500")),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn("👁️ Follow", actionData("logsfollow", "pods", namespace, name, container)),
-			mb.btn("⏮️ Previous", actionData("logsprevious", "pods", namespace, name, container)),
+			mb.btn(f.Btn(f.GlyphAction, "Follow"), actionData("logsfollow", "pods", namespace, name, container)),
+			mb.btn(f.Btn(f.GlyphAction, "Previous"), actionData("logsprevious", "pods", namespace, name, container)),
 		),
 		tg.InlineKeyboardRow(
-			mb.btn("🔙 Back", "menu:resource:view:pods:"+namespace+":"+name),
+			mb.btn(f.Btn(f.GlyphBack, "Back"), "menu:resource:view:pods:"+namespace+":"+name),
 		),
 	)
 }
@@ -869,12 +938,12 @@ func ParseCallbackData(data string) *CallbackAction {
 // stays readable on mobile.
 func nsButtonLabel(namespace string) string {
 	if namespace == "" {
-		return "🌐 All NS"
+		return "All NS"
 	}
 	if len(namespace) > 12 {
-		return "🌐 " + namespace[:11] + "…"
+		return namespace[:11] + "…"
 	}
-	return "🌐 " + namespace
+	return namespace
 }
 
 // ============================================================================

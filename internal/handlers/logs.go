@@ -37,7 +37,7 @@ func (h *LogsHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 	// If follow mode, we need to stream
 	if opts.Follow {
 		h.sendResponse(msg.Chat.ID, fmt.Sprintf(
-			"📋 Following logs for %s/%s (container: %s)...\nUse /cancel to stop",
+			"Following logs for %s/%s (container: %s)...\nUse /cancel to stop",
 			namespace, podName, opts.Container))
 		return h.streamLogs(ctx, msg.Chat.ID, client, opts)
 	}
@@ -55,7 +55,7 @@ func (h *LogsHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 	}
 
 	if len(logs) == 0 {
-		h.sendResponse(msg.Chat.ID, "📭 No logs found")
+		h.sendResponse(msg.Chat.ID, "No logs found")
 		return nil
 	}
 
@@ -64,7 +64,7 @@ func (h *LogsHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 	formatted := formatters.FormatPodLogs(string(logs), 100)
 	h.bot.SendRich(msg.Chat.ID,
 		formatters.RichLogs(namespace+"/"+podName, opts.Container, formatted),
-		fmt.Sprintf("📋 Logs for %s/%s:\n%s", namespace, podName, formatted))
+		fmt.Sprintf("Logs for %s/%s:\n%s", namespace, podName, formatted))
 	return nil
 }
 
@@ -164,7 +164,7 @@ func (h *LogsHandler) streamLogs(ctx context.Context, chatID int64, client *k8s.
 	formatted := formatters.FormatPodLogs(string(logs), 200)
 	h.bot.SendRich(chatID,
 		formatters.RichLogs(opts.Namespace+"/"+opts.PodName, opts.Container, formatted),
-		fmt.Sprintf("📋 Logs for %s/%s (last 200 lines):\n%s", opts.Namespace, opts.PodName, formatted))
+		fmt.Sprintf("Logs for %s/%s (last 200 lines):\n%s", opts.Namespace, opts.PodName, formatted))
 	return nil
 }
 

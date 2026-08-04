@@ -32,13 +32,13 @@ func (h *ContextsHandler) Handle(
 	kubeconfig := client.GetKubeconfig()
 
 	if kubeconfig == nil {
-		h.sendResponse(msg.Chat.ID, "❌ Kubeconfig not loaded")
+		h.sendResponse(msg.Chat.ID, formatters.Btn(formatters.GlyphBroken, "Kubeconfig not loaded"))
 		return nil
 	}
 
 	contexts := kubeconfig.Contexts
 	if len(contexts) == 0 {
-		h.sendResponse(msg.Chat.ID, "📭 No contexts found in kubeconfig")
+		h.sendResponse(msg.Chat.ID, "No contexts found in kubeconfig")
 		return nil
 	}
 
@@ -93,8 +93,8 @@ func (h *UseContextHandler) Handle(
 		{"Scope", "this bot session only"},
 	}
 	h.bot.SendRich(msg.Chat.ID,
-		formatters.RichKeyValue("✅ Context switched", pairs),
-		fmt.Sprintf("✅ Switched to context: %s\n(session only; ~/.kube/config unchanged)", contextName))
+		formatters.RichKeyValue(formatters.Btn(formatters.GlyphDone, "Context switched"), pairs),
+		fmt.Sprintf("Switched to context: %s\n(session only; ~/.kube/config unchanged)", contextName))
 	return nil
 }
 
@@ -145,12 +145,12 @@ func (h *ConfigHandler) Handle(ctx context.Context, msg *tg.Message, args []stri
 		{"Command Prefix", cfg.Bot.CommandPrefix},
 	}
 
-	fallback := "⚙️ Bot Configuration\n"
+	fallback := "Bot Configuration\n"
 	for _, kv := range pairs {
 		fallback += fmt.Sprintf("• %s: %s\n", kv[0], kv[1])
 	}
 
-	h.bot.SendRich(msg.Chat.ID, formatters.RichKeyValue("⚙️ Bot Configuration", pairs), fallback)
+	h.bot.SendRich(msg.Chat.ID, formatters.RichKeyValue("Bot Configuration", pairs), fallback)
 	return nil
 }
 
@@ -202,7 +202,7 @@ func (h *PortForwardHandler) Handle(
 	}
 
 	h.sendResponse(msg.Chat.ID, fmt.Sprintf(
-		"🔌 Port forwarding %s/%s %d -> %d\n"+
+		"Port forwarding %s/%s %d -> %d\n"+
 			"(Not fully implemented - would start background port-forward)",
 		namespace, podName, localPort, remotePort))
 	return nil

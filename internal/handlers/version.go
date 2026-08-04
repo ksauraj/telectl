@@ -38,6 +38,6 @@ func (h *VersionHandler) Handle(ctx context.Context, msg *tg.Message, args []str
 		fallback += fmt.Sprintf("• %s: %s\n", kv[0], kv[1])
 	}
 
-	h.bot.SendRich(msg.Chat.ID, formatters.RichKeyValue("🤖 telectl", pairs), fallback)
+	h.bot.SendRich(msg.Chat.ID, formatters.RichKeyValue("telectl", pairs), fallback)
 	return nil
 }

@@ -36,7 +36,7 @@ func (h *RestartHandler) Handle(ctx context.Context, msg *tg.Message, args []str
 	client := h.getK8sClient()
 
 	if h.getConfig().Kubernetes.DryRun {
-		h.sendResponse(msg.Chat.ID, fmt.Sprintf("🔄 [DRY RUN] Would restart deployment %s/%s", namespace, name))
+		h.sendResponse(msg.Chat.ID, fmt.Sprintf("[DRY RUN] Would restart deployment %s/%s", namespace, name))
 		return nil
 	}
 
@@ -45,7 +45,7 @@ func (h *RestartHandler) Handle(ctx context.Context, msg *tg.Message, args []str
 		return fmt.Errorf("failed to restart deployment: %w", err)
 	}
 
-	h.sendResponse(msg.Chat.ID, fmt.Sprintf("🔄 Restarted deployment %s/%s", namespace, name))
+	h.sendResponse(msg.Chat.ID, fmt.Sprintf("Restarted deployment %s/%s", namespace, name))
 	return nil
 }
 
@@ -92,7 +92,7 @@ func (h *ScaleHandler) Handle(ctx context.Context, msg *tg.Message, args []strin
 
 	if h.getConfig().Kubernetes.DryRun {
 		h.sendResponse(msg.Chat.ID, fmt.Sprintf(
-			"📈 [DRY RUN] Would scale deployment %s/%s to %d replicas",
+			"[DRY RUN] Would scale deployment %s/%s to %d replicas",
 			namespace, name, replicas))
 		return nil
 	}
@@ -102,7 +102,7 @@ func (h *ScaleHandler) Handle(ctx context.Context, msg *tg.Message, args []strin
 		return fmt.Errorf("failed to scale deployment: %w", err)
 	}
 
-	h.sendResponse(msg.Chat.ID, fmt.Sprintf("📈 Scaled deployment %s/%s to %d replicas", namespace, name, replicas))
+	h.sendResponse(msg.Chat.ID, fmt.Sprintf("Scaled deployment %s/%s to %d replicas", namespace, name, replicas))
 	return nil
 }
 
