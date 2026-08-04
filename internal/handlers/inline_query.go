@@ -64,7 +64,7 @@ func (h *InlineQueryHandler) HandleInlineQuery(ctx context.Context, inlineQuery 
 	}
 
 	namespace, name, labelSelector := parseInlineArgs(parts[1:])
-	client := h.getK8sClient()
+	client := h.getK8sClient(nil)
 
 	if name != "" {
 		return h.answerInlineQuery(ctx, inlineQuery.ID,

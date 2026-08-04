@@ -32,6 +32,15 @@ rules:
       - pods/exec
       - pods/portforward
     verbs: ["create"]
+  {{- if .Values.impersonation.enabled }}
+  # Impersonation permissions - required for per-user K8s RBAC
+  - apiGroups: [""]
+    resources:
+      - users
+      - groups
+      - serviceaccounts
+    verbs: ["impersonate"]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -81,6 +90,15 @@ rules:
       - pods/exec
       - pods/portforward
     verbs: ["create"]
+  {{- if .Values.impersonation.enabled }}
+  # Impersonation permissions - required for per-user K8s RBAC
+  - apiGroups: [""]
+    resources:
+      - users
+      - groups
+      - serviceaccounts
+    verbs: ["impersonate"]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

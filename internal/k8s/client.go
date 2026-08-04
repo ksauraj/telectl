@@ -210,6 +210,47 @@ func NewClient(kubeConfigPath, context string, dryRun bool, logger *zap.Logger) 
 	}, nil
 }
 
+// ImpersonatedClient creates a new client that impersonates the given user/groups.
+// This is used for per-request impersonation based on the Telegram user.
+// The returned client shares the same underlying connections but uses a modified
+// rest.Config with Impersonate settings.
+func (c *Client) ImpersonatedClient(user string, groups []string) (*Client, error) {
+	if user == "" && len(groups) == 0 {
+		return c, nil // No impersonation needed
+	}
+
+	// Clone the restConfig and add impersonation
+	impersonatedConfig := rest.CopyConfig(c.restConfig)
+	impersonatedConfig.Impersonate = rest.ImpersonationConfig{
+		UserName: user,
+		Groups:   groups,
+	}
+
+	clientset, err := kubernetes.NewForConfig(impersonatedConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create impersonated clientset: %w", err)
+	}
+
+	dynamicClient, err := dynamic.NewForConfig(impersonatedConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create impersonated dynamic client: %w", err)
+	}
+
+	c.logger.Debug("Created impersonated client",
+		zap.String("user", user),
+		zap.Strings("groups", groups))
+
+	return &Client{
+		clientset:      clientset,
+		dynamicClient:  dynamicClient,
+		restConfig:     impersonatedConfig,
+		kubeconfig:     c.kubeconfig,
+		logger:         c.logger,
+		dryRun:         c.dryRun,
+		currentContext: c.currentContext,
+	}, nil
+}
+
 func (c *Client) ListContexts(ctx context.Context) ([]kubeconfig.ContextInfo, error) {
 	if c.kubeconfig == nil {
 		return nil, fmt.Errorf("kubeconfig not loaded")

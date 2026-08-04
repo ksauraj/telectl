@@ -1242,6 +1242,32 @@ func (b *Bot) IsUserAllowed(userID int64) bool {
 	return false
 }
 
+// K8sClientForUser returns a Kubernetes client impersonated for the given user.
+// If impersonation is not configured or not applicable for this user, returns the base client.
+func (b *Bot) K8sClientForUser(userID int64) *k8s.Client {
+	user, groups, enabled := b.config.GetImpersonationForUser(userID)
+	if !enabled {
+		return b.k8sClient
+	}
+
+	client, err := b.k8sClient.ImpersonatedClient(user, groups)
+	if err != nil {
+		b.logger.Error("Failed to create impersonated client, falling back to base client",
+			zap.Int64("user_id", userID),
+			zap.String("impersonate_user", user),
+			zap.Strings("impersonate_groups", groups),
+			zap.Error(err))
+		return b.k8sClient
+	}
+
+	b.logger.Debug("Using impersonated K8s client",
+		zap.Int64("telegram_user_id", userID),
+		zap.String("impersonate_user", user),
+		zap.Strings("impersonate_groups", groups))
+
+	return client
+}
+
 func (b *Bot) IsCommandAllowed(command string) bool {
 	allowed := b.config.Bot.AllowedCommands
 	if len(allowed) == 0 {

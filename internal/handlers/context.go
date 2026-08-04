@@ -28,7 +28,7 @@ func (h *ContextsHandler) Handle(
 	args []string,
 	session *types.UserSession,
 ) error {
-	client := h.getK8sClient()
+	client := h.getK8sClient(session)
 	kubeconfig := client.GetKubeconfig()
 
 	if kubeconfig == nil {
@@ -76,7 +76,7 @@ func (h *UseContextHandler) Handle(
 	}
 
 	contextName := args[0]
-	client := h.getK8sClient()
+	client := h.getK8sClient(session)
 
 	// Session-scoped: this rebuilds the bot's API clients but deliberately does
 	// not rewrite ~/.kube/config, which is shared with kubectl and with every
@@ -107,7 +107,7 @@ func NewConfigHandler(b types.BotInterface) *ConfigHandler {
 }
 
 func (h *ConfigHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
-	client := h.getK8sClient()
+	client := h.getK8sClient(session)
 	kc := client.GetKubeconfig()
 
 	currentCtx := "none"

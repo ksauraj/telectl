@@ -69,6 +69,32 @@ kubernetes:
   burst: 10
   qps: 5.0
 
+# Impersonation configuration
+# When enabled, the bot will impersonate different K8s users/groups
+# based on the Telegram user ID. This allows per-user RBAC.
+impersonation:
+  # Enable impersonation feature
+  enabled: false
+
+  # Default user to impersonate when no specific mapping exists
+  # Can be a username or serviceaccount (e.g., "system:serviceaccount:default:readonly")
+  default_user: ""
+
+  # Default groups to impersonate when no specific mapping exists
+  default_groups: []
+
+  # Per-Telegram-user mapping to K8s user/groups
+  # Key is the Telegram user ID (as string), value is user/groups
+  # Example:
+  # user_mapping:
+  #   "123456789":    # Telegram user ID
+  #     user: "admin-user"
+  #     groups: ["system:masters", "platform-team"]
+  #   "987654321":
+  #     user: "dev-user"
+  #     groups: ["developers"]
+  user_mapping: {}
+
 logging:
   # Log level: debug, info, warn, error
   level: "info"

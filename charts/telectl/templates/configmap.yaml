@@ -21,6 +21,34 @@ data:
       dry_run: {{ .Values.kubernetes.dryRun }}
       burst: {{ .Values.kubernetes.burst }}
       qps: {{ .Values.kubernetes.qps }}
+    {{- if .Values.impersonation.enabled }}
+    impersonation:
+      enabled: {{ .Values.impersonation.enabled }}
+      {{- if .Values.impersonation.defaultUser }}
+      default_user: {{ .Values.impersonation.defaultUser | quote }}
+      {{- end }}
+      {{- if .Values.impersonation.defaultGroups }}
+      default_groups:
+{{- range .Values.impersonation.defaultGroups }}
+        - {{ . | quote }}
+{{- end }}
+      {{- end }}
+      {{- if .Values.impersonation.userMapping }}
+      user_mapping:
+{{- range $telegramID, $mapping := .Values.impersonation.userMapping }}
+        {{ $telegramID | quote }}:
+          {{- if $mapping.user }}
+          user: {{ $mapping.user | quote }}
+          {{- end }}
+          {{- if $mapping.groups }}
+          groups:
+{{- range $mapping.groups }}
+            - {{ . | quote }}
+{{- end }}
+          {{- end }}
+{{- end }}
+      {{- end }}
+    {{- end }}
     logging:
       level: {{ .Values.logging.level | quote }}
       format: {{ .Values.logging.format | quote }}
