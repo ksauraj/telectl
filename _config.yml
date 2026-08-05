@@ -8,10 +8,10 @@ description: >-
 # via the jekyll-remote-theme plugin (bundled with the github-pages gem).
 remote_theme: just-the-docs/just-the-docs
 
-# Pitch-black default: force a custom true-black color scheme for everyone.
-# Defined in _sass/color_schemes/pitch-black.scss. Drop the "color_scheme"
-# line (or set "light") to let readers pick via the toggle.
-color_scheme: pitch-black
+# Dark default. We start from the built-in "dark" scheme (which remote-theme
+# reliably generates) and push it to true black via _sass/custom/custom.scss
+# (the just-the-docs extension file, always included).
+color_scheme: dark
 
 # Site-wide navigation (replaces the auto-generated list under "Navigation").
 nav_sort: case_insensitive
