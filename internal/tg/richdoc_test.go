@@ -59,6 +59,32 @@ func TestRichTableEscapesPipes(t *testing.T) {
 	}
 }
 
+// Bold markers added by this package must survive the cell escaping pass:
+// "**Kind**" must reach the client as bold markup, not as escaped literal
+// asterisks (\*\*Kind\*\*) which render as plain **Kind**.
+func TestRichKeyValueBoldSurvivesEscaping(t *testing.T) {
+	d := NewRichDoc()
+	d.KeyValue([][2]string{
+		{"Kind", "Deployment"},
+		{"Label", "a_b"}, // value keeps markdown control chars escaped
+	})
+	got := d.String()
+
+	if !strings.Contains(got, "**Kind**") {
+		t.Errorf("bold markers were mangled, want **Kind** in:\n%s", got)
+	}
+	if strings.Contains(got, `\*\*Kind\*\*`) {
+		t.Errorf("bold markers escaped as literal asterisks:\n%s", got)
+	}
+	// The value cell still has its underscore escaped once (not double).
+	if !strings.Contains(got, `a\_b`) {
+		t.Errorf("value underscore not escaped once, got:\n%s", got)
+	}
+	if strings.Contains(got, `a\\_b`) {
+		t.Errorf("value underscore double-escaped, got:\n%s", got)
+	}
+}
+
 // Kubernetes labels and event messages routinely contain Markdown control
 // characters; unescaped, they would corrupt the rendering.
 func TestRichEscapesMarkdownControlChars(t *testing.T) {

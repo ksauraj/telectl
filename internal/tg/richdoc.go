@@ -63,13 +63,18 @@ func (d *RichDoc) Code(language, content string) *RichDoc {
 
 // KeyValue renders a two-column borderless table, which reads better than a
 // bullet list for metadata pairs.
+//
+// Cells are passed raw: Table() performs the single escaping pass. The field
+// name is wrapped in bold markers, which escapeRichInline now preserves (the
+// markers are stashed before asterisk escaping), so "**Kind**" renders bold
+// instead of leaking literal asterisks.
 func (d *RichDoc) KeyValue(pairs [][2]string) *RichDoc {
 	if len(pairs) == 0 {
 		return d
 	}
 	rows := make([][]string, 0, len(pairs))
 	for _, p := range pairs {
-		rows = append(rows, []string{"**" + escapeRichInline(p[0]) + "**", escapeRichInline(p[1])})
+		rows = append(rows, []string{"**" + p[0] + "**", p[1]})
 	}
 	return d.Table([]string{"Field", "Value"}, rows, TableOpts{Align: []string{"left", "left"}})
 }
@@ -187,7 +192,15 @@ func (d *RichDoc) block(s string) {
 // escapeRichInline neutralises Markdown control characters in cluster-supplied
 // text. Kubernetes names are DNS labels, but labels, annotations and event
 // messages are free-form and routinely contain *, _, [ and backticks.
+//
+// Bold markers (**) added by this package (KeyValue field names, Table
+// captions) must survive the escaping pass, so they are stashed before
+// asterisks are escaped and restored afterwards. Without this, "**Kind**"
+// would become "\*\*Kind\*\*" and render as literal **Kind** instead of bold.
 func escapeRichInline(s string) string {
+	// 0x00 cannot appear in cluster data (API strings are UTF-8 text), so it is
+	// a safe stash marker.
+	s = strings.ReplaceAll(s, "**", "\x00BOLD\x00")
 	replacer := strings.NewReplacer(
 		`\`, `\\`,
 		"`", "\\`",
@@ -198,7 +211,8 @@ func escapeRichInline(s string) string {
 		"<", "&lt;",
 		">", "&gt;",
 	)
-	return replacer.Replace(s)
+	s = replacer.Replace(s)
+	return strings.ReplaceAll(s, "\x00BOLD\x00", "**")
 }
 
 // escapeTableCell additionally escapes "|" and flattens newlines, either of
