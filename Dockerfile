@@ -1,6 +1,10 @@
 # Build stage
 FROM golang:1.23-alpine AS builder
 
+# Buildx injects the target platform; the multi-arch build compiles the
+# correct binary per platform instead of always producing amd64.
+ARG TARGETARCH
+
 WORKDIR /app
 
 # Install build dependencies
@@ -13,8 +17,9 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+# Build the binary for the target architecture (CGO disabled so the
+# cross-arch build needs no gcc toolchain)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH:-amd64} go build \
     -ldflags="-w -s -X main.version=0.1.0 -X main.commit=$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown') -X main.date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -o telectl ./cmd/telectl
 
