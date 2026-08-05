@@ -23,11 +23,11 @@ const appName = "telectl"
 const envPrefix = "TELECTL"
 
 type Config struct {
-	Telegram      TelegramConfig       `mapstructure:"telegram"`
-	Kubernetes    KubernetesConfig     `mapstructure:"kubernetes"`
-	Impersonation ImpersonationConfig  `mapstructure:"impersonation"`
-	Logging       LoggingConfig        `mapstructure:"logging"`
-	Bot           BotConfig            `mapstructure:"bot"`
+	Telegram      TelegramConfig      `mapstructure:"telegram"`
+	Kubernetes    KubernetesConfig    `mapstructure:"kubernetes"`
+	Impersonation ImpersonationConfig `mapstructure:"impersonation"`
+	Logging       LoggingConfig       `mapstructure:"logging"`
+	Bot           BotConfig           `mapstructure:"bot"`
 }
 
 type TelegramConfig struct {
