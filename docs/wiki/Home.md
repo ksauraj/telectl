@@ -20,7 +20,7 @@ Welcome to the telectl wiki! This is the central documentation hub for the proje
 - [Helm Chart Guide](Helm-Chart-Guide) - Complete Helm deployment guide
 - [Docker Deployment](Docker-Deployment) - Running with Docker
 - [Kubernetes RBAC](Kubernetes-RBAC) - Setting up permissions
-- [Impersonation](Impersonation) - Per-user Kubernetes RBAC
+- [Impersonation & RBAC](Impersonation-and-RBAC) - Per-user Kubernetes RBAC
 - [Production Checklist](Production-Checklist) - Pre-deployment checklist
 
 ### Development
