@@ -1,0 +1,119 @@
+{{- if .Values.rbac.create }}
+{{- if .Values.rbac.clusterScoped }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "telectl.fullname" . }}
+  labels:
+    {{- include "telectl.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["", "apps", "networking.k8s.io", "metrics.k8s.io"]
+    resources:
+      - pods
+      - deployments
+      - deployments/scale
+      - services
+      - replicasets
+      - replicasets/scale
+      - namespaces
+      - nodes
+      - configmaps
+      - secrets
+      - persistentvolumeclaims
+      - persistentvolumes
+      - ingresses
+      - events
+      - pods/log
+      - pods/exec
+      - pods/portforward
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources:
+      - pods/exec
+      - pods/portforward
+    verbs: ["create"]
+  {{- if .Values.impersonation.enabled }}
+  # Impersonation permissions - required for per-user K8s RBAC
+  - apiGroups: [""]
+    resources:
+      - users
+      - groups
+      - serviceaccounts
+    verbs: ["impersonate"]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "telectl.fullname" . }}
+  labels:
+    {{- include "telectl.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "telectl.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ include "telectl.fullname" . }}
+  apiGroup: rbac.authorization.k8s.io
+{{- else }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "telectl.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "telectl.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["", "apps", "networking.k8s.io", "metrics.k8s.io"]
+    resources:
+      - pods
+      - deployments
+      - deployments/scale
+      - services
+      - replicasets
+      - replicasets/scale
+      - namespaces
+      - nodes
+      - configmaps
+      - secrets
+      - persistentvolumeclaims
+      - persistentvolumes
+      - ingresses
+      - events
+      - pods/log
+      - pods/exec
+      - pods/portforward
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources:
+      - pods/exec
+      - pods/portforward
+    verbs: ["create"]
+  {{- if .Values.impersonation.enabled }}
+  # Impersonation permissions - required for per-user K8s RBAC
+  - apiGroups: [""]
+    resources:
+      - users
+      - groups
+      - serviceaccounts
+    verbs: ["impersonate"]
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "telectl.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "telectl.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "telectl.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ include "telectl.fullname" . }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
+{{- end }}

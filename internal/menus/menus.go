@@ -90,6 +90,7 @@ func (mb *MenuBuilder) GetBotCommands() []tg.BotCommand {
 		{Command: "operations", Description: "Operations"},
 		{Command: "settings", Description: "Settings"},
 		{Command: "help", Description: "Help and command reference"},
+		{Command: "about", Description: "Version, links, and project info"},
 	}
 }
 

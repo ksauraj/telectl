@@ -119,7 +119,7 @@ release: ## Create release (tags current commit)
 # Development helpers
 dev-setup: ## Setup development environment
 	@# Pinned to the version CI uses; see GOLANGCI_LINT_VERSION in ci.yml.
-	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.1.6
 	@go install golang.org/x/tools/cmd/goimports@latest
 	@go install honnef.co/go/tools/cmd/staticcheck@latest
 	@go install github.com/golang/mock/mockgen@latest

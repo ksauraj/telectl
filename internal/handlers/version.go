@@ -18,7 +18,7 @@ func NewVersionHandler(b types.BotInterface) *VersionHandler {
 }
 
 func (h *VersionHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
-	version, err := h.getK8sClient().GetServerVersion(ctx)
+	version, err := h.getK8sClient(session).GetServerVersion(ctx)
 	if err != nil {
 		version = "unknown"
 	}

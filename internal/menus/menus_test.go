@@ -159,9 +159,9 @@ func TestMenuBuilder_GetBotCommands(t *testing.T) {
 	mb := NewMenuBuilder(cfg)
 
 	commands := mb.GetBotCommands()
-	assert.Len(t, commands, 8)
+	assert.Len(t, commands, 9)
 
-	expectedCommands := []string{"resources", "logs", "exec", "contexts", "monitor", "operations", "settings", "help"}
+	expectedCommands := []string{"resources", "logs", "exec", "contexts", "monitor", "operations", "settings", "help", "about"}
 	for i, cmd := range expectedCommands {
 		assert.Equal(t, cmd, commands[i].Command)
 	}

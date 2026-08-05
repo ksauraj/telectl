@@ -54,7 +54,7 @@ func (h *GetHandler) Handle(ctx context.Context, msg *tg.Message, args []string,
 		name = remaining[0]
 	}
 
-	client := h.getK8sClient()
+	client := h.getK8sClient(session)
 
 	if name != "" {
 		// Get single resource

@@ -96,6 +96,7 @@ func New(cfg *config.Config, logger *zap.Logger) (*Bot, error) {
 func (b *Bot) registerHandlers() {
 	b.handlers["start"] = handlers.NewStartHandler(b)
 	b.handlers[cmdHelp] = handlers.NewHelpHandler(b)
+	b.handlers["about"] = handlers.NewAboutHandler(b)
 	b.handlers["version"] = handlers.NewVersionHandler(b)
 	b.handlers["get"] = handlers.NewGetHandler(b)
 	b.handlers["describe"] = handlers.NewDescribeHandler(b)
@@ -1030,13 +1031,18 @@ func (b *Bot) currentContextName(session *types.UserSession) string {
 }
 
 func (b *Bot) mainMenuText(session *types.UserSession) string {
-	return fmt.Sprintf(`<b>telectl</b>
+	clusterName := b.currentContextName(session)
+	if clusterName == "" {
+		clusterName = "unknown"
+	}
+	return fmt.Sprintf(`<b>telectl</b> — Kubernetes cluster management from Telegram
 
 <b>Cluster:</b> %s
 <b>Namespace:</b> %s
 
-Choose an action below, or use /help for the full command reference.`,
-		formatters.EscapeHTML(b.currentContextName(session)),
+Choose an action below, or use /help for the full command reference.
+Use /about for version, links, and project info.`,
+		formatters.EscapeHTML(clusterName),
 		formatters.EscapeHTML(session.GetNamespace()))
 }
 
@@ -1240,6 +1246,32 @@ func (b *Bot) IsUserAllowed(userID int64) bool {
 		}
 	}
 	return false
+}
+
+// K8sClientForUser returns a Kubernetes client impersonated for the given user.
+// If impersonation is not configured or not applicable for this user, returns the base client.
+func (b *Bot) K8sClientForUser(userID int64) *k8s.Client {
+	user, groups, enabled := b.config.GetImpersonationForUser(userID)
+	if !enabled {
+		return b.k8sClient
+	}
+
+	client, err := b.k8sClient.ImpersonatedClient(user, groups)
+	if err != nil {
+		b.logger.Error("Failed to create impersonated client, falling back to base client",
+			zap.Int64("user_id", userID),
+			zap.String("impersonate_user", user),
+			zap.Strings("impersonate_groups", groups),
+			zap.Error(err))
+		return b.k8sClient
+	}
+
+	b.logger.Debug("Using impersonated K8s client",
+		zap.Int64("telegram_user_id", userID),
+		zap.String("impersonate_user", user),
+		zap.Strings("impersonate_groups", groups))
+
+	return client
 }
 
 func (b *Bot) IsCommandAllowed(command string) bool {

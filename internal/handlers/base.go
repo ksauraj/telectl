@@ -147,8 +147,19 @@ func parseFlags(args []string) (namespace, output, selector, fieldSelector strin
 	return f.namespace, f.output, f.selector, f.fieldSelector, f.remaining
 }
 
-func (h *BaseHandler) getK8sClient() *k8s.Client {
+func (h *BaseHandler) getK8sClient(session *types.UserSession) *k8s.Client {
+	var userID int64
+	if session != nil {
+		userID = session.UserID
+	}
 	if c, ok := h.bot.K8sClient().(*k8s.Client); ok {
+		// Check if bot has K8sClientForUser method (for impersonation)
+		type impersonatedBot interface {
+			K8sClientForUser(userID int64) *k8s.Client
+		}
+		if b, ok := h.bot.(impersonatedBot); ok {
+			return b.K8sClientForUser(userID)
+		}
 		return c
 	}
 	return nil

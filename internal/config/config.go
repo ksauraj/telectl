@@ -23,10 +23,11 @@ const appName = "telectl"
 const envPrefix = "TELECTL"
 
 type Config struct {
-	Telegram   TelegramConfig   `mapstructure:"telegram"`
-	Kubernetes KubernetesConfig `mapstructure:"kubernetes"`
-	Logging    LoggingConfig    `mapstructure:"logging"`
-	Bot        BotConfig        `mapstructure:"bot"`
+	Telegram      TelegramConfig       `mapstructure:"telegram"`
+	Kubernetes    KubernetesConfig     `mapstructure:"kubernetes"`
+	Impersonation ImpersonationConfig  `mapstructure:"impersonation"`
+	Logging       LoggingConfig        `mapstructure:"logging"`
+	Bot           BotConfig            `mapstructure:"bot"`
 }
 
 type TelegramConfig struct {
@@ -48,6 +49,21 @@ type KubernetesConfig struct {
 	ImpersonateGroups []string `mapstructure:"impersonate_groups"`
 	Burst             int      `mapstructure:"burst"`
 	QPS               float32  `mapstructure:"qps"`
+	ClusterName       string   `mapstructure:"cluster_name"`
+}
+
+// ImpersonationConfig defines per-user Kubernetes impersonation settings.
+type ImpersonationConfig struct {
+	Enabled       bool                         `mapstructure:"enabled"`
+	DefaultUser   string                       `mapstructure:"default_user"`
+	DefaultGroups []string                     `mapstructure:"default_groups"`
+	UserMapping   map[string]UserImpersonation `mapstructure:"user_mapping"`
+}
+
+// UserImpersonation defines K8s user/groups for a specific Telegram user.
+type UserImpersonation struct {
+	User   string   `mapstructure:"user"`
+	Groups []string `mapstructure:"groups"`
 }
 
 type LoggingConfig struct {
@@ -234,6 +250,13 @@ func setDefaults() {
 	viper.SetDefault("kubernetes.dry_run", false)
 	viper.SetDefault("kubernetes.burst", 10)
 	viper.SetDefault("kubernetes.qps", 5.0)
+	viper.SetDefault("kubernetes.cluster_name", "")
+
+	// Impersonation defaults
+	viper.SetDefault("impersonation.enabled", false)
+	viper.SetDefault("impersonation.default_user", "")
+	viper.SetDefault("impersonation.default_groups", []string{})
+	viper.SetDefault("impersonation.user_mapping", map[string]UserImpersonation{})
 
 	// Logging defaults
 	viper.SetDefault("logging.level", "info")
@@ -252,7 +275,7 @@ func setDefaults() {
 	// A command missing here is rejected with "not allowed" even though a
 	// handler exists; note the key is "portforward", not "port-forward".
 	viper.SetDefault("bot.allowed_commands", []string{
-		"start", "help", "version",
+		"start", "help", "about", "version",
 		"get", "describe", "logs", "exec", "portforward",
 		"contexts", "use-context", "config",
 		"top", "events", "watch", "restart", "scale",
@@ -325,6 +348,13 @@ func CreateDefaultConfig(path string) error {
 			DryRun:           false,
 			Burst:            10,
 			QPS:              5.0,
+			ClusterName:      "",
+		},
+		Impersonation: ImpersonationConfig{
+			Enabled:       false,
+			DefaultUser:   "",
+			DefaultGroups: []string{},
+			UserMapping:   map[string]UserImpersonation{},
 		},
 		Logging: LoggingConfig{
 			Level:  "info",
@@ -340,7 +370,7 @@ func CreateDefaultConfig(path string) error {
 			EnableReplyKeyboard: true,
 			MenuPageSize:        10,
 			AllowedCommands: []string{
-				"start", "help", "version",
+				"start", "help", "about", "version",
 				"get", "describe", "logs", "exec", "portforward",
 				"contexts", "use-context", "config",
 				"top", "events", "watch", "restart", "scale",
@@ -351,6 +381,7 @@ func CreateDefaultConfig(path string) error {
 
 	viper.Set("telegram", c.Telegram)
 	viper.Set("kubernetes", c.Kubernetes)
+	viper.Set("impersonation", c.Impersonation)
 	viper.Set("logging", c.Logging)
 	viper.Set("bot", c.Bot)
 
@@ -362,10 +393,10 @@ func ValidateConfig(cfg *Config) error {
 		return fmt.Errorf("telegram bot token is required")
 	}
 
-	if cfg.Kubernetes.KubeconfigPath == "" {
-		home, _ := os.UserHomeDir()
-		cfg.Kubernetes.KubeconfigPath = filepath.Join(home, ".kube", "config")
-	}
+	// Do NOT set a default kubeconfig path here. Let the k8s client handle it:
+	// - If kubeconfigPath is explicitly set, use it
+	// - If empty, try in-cluster config first, then fall back to default loading rules
+	// This avoids hardcoding /home/telectl/.kube/config in container environments
 
 	if cfg.Kubernetes.Timeout <= 0 {
 		cfg.Kubernetes.Timeout = 30
@@ -379,13 +410,45 @@ func ValidateConfig(cfg *Config) error {
 		cfg.Bot.RateLimit = 30
 	}
 
-	// Expand home directory in kubeconfig path
-	if strings.HasPrefix(cfg.Kubernetes.KubeconfigPath, "~/") {
+	// Expand home directory in kubeconfig path if explicitly set
+	if cfg.Kubernetes.KubeconfigPath != "" && strings.HasPrefix(cfg.Kubernetes.KubeconfigPath, "~/") {
 		home, _ := os.UserHomeDir()
 		cfg.Kubernetes.KubeconfigPath = filepath.Join(home, cfg.Kubernetes.KubeconfigPath[2:])
 	}
 
+	// Validate impersonation config
+	if cfg.Impersonation.Enabled {
+		if cfg.Impersonation.DefaultUser == "" && len(cfg.Impersonation.UserMapping) == 0 {
+			return fmt.Errorf("impersonation enabled but no default_user or user_mapping configured")
+		}
+		for telegramID, mapping := range cfg.Impersonation.UserMapping {
+			if mapping.User == "" && len(mapping.Groups) == 0 {
+				return fmt.Errorf("impersonation user_mapping for telegram ID %s has no user or groups", telegramID)
+			}
+		}
+	}
+
 	return nil
+}
+
+// GetImpersonationForUser returns the impersonation config for a specific Telegram user ID.
+// Returns (user, groups, enabled). If impersonation is disabled or no mapping found, returns ("", nil, false).
+func (c *Config) GetImpersonationForUser(telegramID int64) (string, []string, bool) {
+	if !c.Impersonation.Enabled {
+		return "", nil, false
+	}
+
+	idStr := strconv.FormatInt(telegramID, 10)
+	if mapping, ok := c.Impersonation.UserMapping[idStr]; ok {
+		return mapping.User, mapping.Groups, true
+	}
+
+	// Fall back to defaults
+	if c.Impersonation.DefaultUser != "" || len(c.Impersonation.DefaultGroups) > 0 {
+		return c.Impersonation.DefaultUser, c.Impersonation.DefaultGroups, true
+	}
+
+	return "", nil, false
 }
 
 func SetupLogger(cfg *LoggingConfig) (*zap.Logger, error) {

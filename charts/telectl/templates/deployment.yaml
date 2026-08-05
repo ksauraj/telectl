@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "telectl.fullname" . }}
+  labels:
+    {{- include "telectl.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "telectl.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "telectl.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "telectl.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "telectl.fullname" . }}
+                  key: TELEGRAM_BOT_TOKEN
+                  optional: true
+            - name: ALLOWED_USER_IDS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "telectl.fullname" . }}
+                  key: ALLOWED_USER_IDS
+                  optional: true
+            - name: ADMIN_USER_IDS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "telectl.fullname" . }}
+                  key: ADMIN_USER_IDS
+                  optional: true
+            {{- if .Values.kubernetes.kubeconfigPath }}
+            - name: KUBECONFIG
+              value: {{ .Values.kubernetes.kubeconfigPath | quote }}
+            {{- end }}
+            {{- range .Values.extraEnv }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: telectl.yaml
+              readOnly: true
+            {{- range .Values.extraVolumeMounts }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              {{- if .subPath }}
+              subPath: {{ .subPath }}
+              {{- end }}
+              {{- if .readOnly }}
+              readOnly: {{ .readOnly }}
+              {{- end }}
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "telectl.fullname" . }}-config
+            items:
+              - key: telectl.yaml
+                path: telectl.yaml
+        {{- range .Values.extraVolumes }}
+        - name: {{ .name }}
+          {{- if .configMap }}
+          configMap:
+            name: {{ .configMap.name }}
+            {{- if .configMap.items }}
+            items:
+              {{- toYaml .configMap.items | nindent 14 }}
+            {{- end }}
+          {{- else if .secret }}
+          secret:
+            name: {{ .secret.name }}
+            {{- if .secret.items }}
+            items:
+              {{- toYaml .secret.items | nindent 14 }}
+            {{- end }}
+          {{- else if .emptyDir }}
+          emptyDir: {}
+          {{- else if .hostPath }}
+          hostPath:
+            path: {{ .hostPath.path }}
+            {{- if .hostPath.type }}
+            type: {{ .hostPath.type }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
