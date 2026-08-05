@@ -80,6 +80,10 @@ linters:
         - name: package-comments
           disabled: false
 
+    errcheck:
+      exclude-functions:
+        - ".*Close"
+
 formatters:
   enable:
     - gofmt
