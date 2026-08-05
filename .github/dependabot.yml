@@ -1,0 +1,67 @@
+# Dependabot Configuration
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # Go modules
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "gomod"
+    commit-message:
+      prefix: "deps(gomod)"
+      include: "scope"
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+    ignore:
+      # Ignore major version updates for core dependencies that need manual review
+      - dependency-name: "k8s.io/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "github.com/go-telegram/bot"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "github.com/spf13/cobra"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "github.com/spf13/viper"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "go.uber.org/zap"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "deps(actions)"
+      include: "scope"
+    open-pull-requests-limit: 5
+
+  # Docker (for base image updates)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "deps(docker)"
+      include: "scope"
+    open-pull-requests-limit: 3

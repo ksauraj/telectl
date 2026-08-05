@@ -8,6 +8,16 @@ binary to ship in the container image.
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![CI](https://github.com/ksauraj/telectl/actions/workflows/ci.yml/badge.svg)](https://github.com/ksauraj/telectl/actions)
 [![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Fksauraj%2Ftelectl-2496ED?logo=docker)](https://github.com/ksauraj/telectl/pkgs/container/telectl)
+[![Release](https://img.shields.io/github/v/release/ksauraj/telectl?include_prereleases)](https://github.com/ksauraj/telectl/releases)
+[![Code of Conduct](https://img.shields.io/badge/Code%20of%20Conduct-Contributor%20Covenant-ff69b4.svg)](CODE_OF_CONDUCT.md)
+[![Contributing](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Security](https://img.shields.io/badge/Security-Policy-blue.svg)](SECURITY.md)
+
+---
+
+⚠️ **Alpha Release** — This is an early preview release. APIs and configuration may change. Not recommended for production use without thorough testing.
+
+---
 
 ## What it does
 
@@ -51,7 +61,7 @@ the pod, not `sh` with the container set to `echo hi`.
 ### Install with Helm (Recommended for Kubernetes)
 
 ```bash
-# From the chart repository
+# From the Helm chart repository
 helm repo add telectl https://ksauraj.github.io/telectl/
 helm repo update
 
@@ -75,9 +85,38 @@ helm install telectl ./charts/telectl \
   --set telegram.allowedUserIds="{123456789}"
 ```
 
-See [charts/telectl/README.md](charts/telectl/README.md) for complete configuration options, RBAC modes, and impersonation setup.
+See [Helm Chart Guide](docs/wiki/Helm-Chart-Guide.md) for complete configuration options, RBAC modes, and impersonation setup.
 
 ### Install from source
+
+```bash
+git clone https://github.com/ksauraj/telectl
+cd telectl
+make build
+```
+
+### Install with Go
+
+```bash
+go install github.com/ksauraj/telectl/cmd/telectl@latest
+```
+
+### Docker
+
+```bash
+docker pull ghcr.io/ksauraj/telectl:latest
+```
+
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Installation Guide](docs/wiki/Installation-Guide.md) | Complete installation instructions |
+| [Helm Chart Guide](docs/wiki/Helm-Chart-Guide.md) | Complete Helm deployment guide |
+| [Configuration Reference](docs/CONFIGURATION.md) | All configuration options |
+| [Menu Guide](docs/MENU_GUIDE.md) | In-chat interface walkthrough |
+| [Architecture](docs/ARCHITECTURE.md) | System design and components |
+| [Wiki](docs/wiki/Home.md) | Full documentation hub |
 
 ```bash
 git clone https://github.com/ksauraj/telectl

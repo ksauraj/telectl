@@ -1,0 +1,37 @@
+# CODEOWNERS
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global owners - these people will be requested for review on all PRs
+* @ksauraj
+
+# Helm chart
+charts/ @ksauraj
+
+# CI/CD configuration
+.github/workflows/ @ksauraj
+.github/dependabot.yml @ksauraj
+
+# Documentation
+docs/ @ksauraj
+README.md @ksauraj
+CONTRIBUTING.md @ksauraj
+SECURITY.md @ksauraj
+CODE_OF_CONDUCT.md @ksauraj
+
+# Bot core
+internal/bot/ @ksauraj
+internal/handlers/ @ksauraj
+internal/k8s/ @ksauraj
+internal/menus/ @ksauraj
+internal/tg/ @ksauraj
+
+# Configuration & types
+internal/config/ @ksauraj
+internal/types/ @ksauraj
+internal/utils/ @ksauraj
+
+# CLI entry point
+cmd/ @ksauraj
+
+# Package utilities
+pkg/ @ksauraj

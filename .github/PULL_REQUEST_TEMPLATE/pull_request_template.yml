@@ -1,0 +1,80 @@
+---
+name: Pull Request Template
+description: Standard PR template for telectl
+title: "[TYPE] Brief description"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for contributing to telectl!
+  - type: checkboxes
+    id: type
+    attributes:
+      label: Type of Change
+      description: What type of change does this PR introduce?
+      options:
+        - label: "feat: New feature"
+        - label: "fix: Bug fix"
+        - label: "docs: Documentation only"
+        - label: "style: Formatting, missing semicolons, etc."
+        - label: "refactor: Code change that neither fixes a bug nor adds a feature"
+        - label: "perf: Performance improvement"
+        - label: "test: Adding missing tests"
+        - label: "chore: Maintenance, dependencies, build changes"
+        - label: "ci: CI/CD changes"
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe your changes in detail.
+      placeholder: "This PR adds..."
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation & Context
+      description: Why is this change required? What problem does it solve?
+      placeholder: "Fixes #123. Previously, the bot would..."
+    validations:
+      required: true
+  - type: textarea
+    id: testing
+    attributes:
+      label: Testing
+      description: How did you test this change?
+      placeholder: |
+        - Ran `make test` - all tests pass
+        - Tested manually with Kind cluster
+        - Verified Helm chart installs correctly
+    validations:
+      required: true
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: All CI checks pass (gofmt, go vet, golangci-lint, tests)
+        - label: Commit messages follow conventional commits format
+        - label: Branch is up to date with main
+        - label: CHANGELOG.md updated (for user-facing changes)
+        - label: Documentation updated (if applicable)
+        - label: Helm chart values updated (if applicable)
+        - label: No breaking changes (or breaking changes documented)
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots (if UI changes)
+      description: Add screenshots or GIFs demonstrating the change.
+    validations:
+      required: false
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Breaking Changes
+      description: Does this PR introduce breaking changes?
+      options:
+        - "No breaking changes"
+        - "Yes, breaking changes (documented in PR description)"
+    validations:
+      required: true
