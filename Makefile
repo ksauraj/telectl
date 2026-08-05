@@ -9,7 +9,7 @@ COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -ldflags="-w -s -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(BUILD_DATE)"
 GO_FILES := $(shell find . -name '*.go' -not -path './vendor/*' -not -path './.git/*')
-DOCKER_IMAGE := ksauraj/telectl
+DOCKER_IMAGE := ghcr.io/ksauraj/telectl
 DOCKER_TAG := $(VERSION)
 
 # Default target
