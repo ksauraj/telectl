@@ -1,0 +1,122 @@
+name: Bug Report
+description: Create a report to help us improve
+title: "[BUG] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for taking the time to fill out this bug report!"
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: "When I run /get pods -n kube-system, the bot returns an error..."
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Start the bot
+        2. Send /get pods -n kube-system
+        3. Observe error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: A clear and concise description of what you expected to happen.
+      placeholder: "The bot should list pods in the kube-system namespace..."
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: A clear and concise description of what actually happened.
+      placeholder: "The bot returns an error instead of listing pods..."
+    validations:
+      required: true
+  - type: input
+    id: telectl_version
+    attributes:
+      label: telectl Version
+      description: Version of telectl (e.g., v0.1.0 or commit hash)
+      placeholder: "v0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: kubernetes_version
+    attributes:
+      label: Kubernetes Version
+      description: Kubernetes cluster version
+      placeholder: "v1.28.5"
+    validations:
+      required: true
+  - type: input
+    id: go_version
+    attributes:
+      label: Go Version
+      description: Go version used to build
+      placeholder: "go1.23.5"
+    validations:
+      required: false
+  - type: input
+    id: os
+    attributes:
+      label: Operating System
+      description: OS where telectl runs
+      placeholder: "Linux/Ubuntu 22.04"
+    validations:
+      required: true
+  - type: input
+    id: helm_version
+    attributes:
+      label: Helm Version (if applicable)
+      description: Helm version if deployed via Helm
+      placeholder: "v3.14.0"
+    validations:
+      required: false
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: Paste relevant configuration (REDACT SECRETS!)
+      placeholder: |
+        # Helm values.yaml snippet
+        # telegram:
+        #   botToken: "REDACTED"
+        #   allowedUserIds: [123456789]
+      render: yaml
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste relevant logs (REDACT SECRETS!)
+      placeholder: "2024-01-15T10:30:00Z ERROR internal/bot/bot.go:123 Failed to get pods: ..."
+      render: text
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: If applicable, add screenshots to help explain your problem.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here.
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues
+          required: true
+        - label: I have provided all requested information
+          required: true
+        - label: I have redacted sensitive information (tokens, user IDs, etc.)
+          required: true
