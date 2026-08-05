@@ -13,7 +13,8 @@ env:
   # Pinned, not "latest": golangci-lint adds and retires linters between
   # releases, so an unpinned version turns an unrelated upstream release into a
   # red build on a commit that changed nothing. Bump this deliberately.
-  GOLANGCI_LINT_VERSION: v1.64.8
+  # golangci-lint v2 is required by golangci-lint-action >= v7
+  GOLANGCI_LINT_VERSION: v2.1.6
 
 permissions:
   contents: read
