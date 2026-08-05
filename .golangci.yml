@@ -24,7 +24,6 @@ linters:
     - gocyclo
     - godot
     - gosec
-    - gosimple
     - govet
     - ineffassign
     - lll
@@ -35,7 +34,6 @@ linters:
     - prealloc
     - revive
     - staticcheck
-    - stylecheck
     - unconvert
     - unparam
     - unused
