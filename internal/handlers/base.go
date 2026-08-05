@@ -158,6 +158,12 @@ func (h *BaseHandler) getK8sClient(session *types.UserSession) *k8s.Client {
 			K8sClientForUser(userID int64) *k8s.Client
 		}
 		if b, ok := h.bot.(impersonatedBot); ok {
+			logger := h.getLogger()
+			if logger != nil {
+				logger.Debug("Getting K8s client for user",
+					zap.Int64("telegram_user_id", userID),
+				)
+			}
 			return b.K8sClientForUser(userID)
 		}
 		return c

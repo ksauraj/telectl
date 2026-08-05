@@ -893,6 +893,11 @@ func (b *Bot) dispatchResourceAction(
 			formatters.EscapeHTML(nsDisplay(action.Namespace))), &kb)
 
 	case "confirmdelete":
+		b.logger.Info("Dispatching confirmdelete action",
+			zap.Int64("user_id", session.UserID),
+			zap.String("resource_type", action.ResourceType),
+			zap.String("namespace", action.Namespace),
+			zap.String("name", action.Name))
 		b.confirmDelete(ctx, chatID, messageID, action, session)
 
 	case "restart":
@@ -924,11 +929,12 @@ func (b *Bot) restartWorkload(ctx context.Context, r detailReq) {
 		b.showNotice(ctx, r, "Not restartable", "Only deployments can be restarted.")
 		return
 	}
-	if err := b.k8sClient.RestartDeployment(ctx, r.ns, r.name); err != nil {
+	client := b.K8sClientForSession(r.session)
+	if err := client.RestartDeployment(ctx, r.ns, r.name); err != nil {
 		b.reportPaneError(ctx, r, "restart deployment", err)
 		return
 	}
-	if b.k8sClient.IsDryRun() {
+	if client.IsDryRun() {
 		b.showNotice(ctx, r, "Dry run — restart not applied",
 			"telectl is running with dry-run enabled, so "+r.name+" was not restarted.")
 		return
@@ -947,13 +953,21 @@ func (b *Bot) confirmDelete(
 ) {
 	req := detailReqFor(chatID, messageID, action.ResourceType, action.Namespace, action.Name, session)
 
+	// Log user action with user ID
+	b.logger.Info("User action: delete resource",
+		zap.Int64("telegram_user_id", session.UserID),
+		zap.String("resource_type", action.ResourceType),
+		zap.String("namespace", action.Namespace),
+		zap.String("name", action.Name),
+	)
+
 	gvr, known := types.ResourceMap[action.ResourceType]
 	if !known {
 		b.showNotice(ctx, req, "Unknown resource type",
 			action.ResourceType+" is not a resource this bot knows about.")
 		return
 	}
-	if err := b.deleteResourceForMenu(ctx, gvr.GVR(), action.Namespace, action.Name); err != nil {
+	if err := b.deleteResourceForMenu(ctx, gvr.GVR(), action.Namespace, action.Name, session); err != nil {
 		b.reportPaneError(ctx, req, "delete "+action.Name, err)
 		return
 	}
@@ -965,13 +979,27 @@ func (b *Bot) confirmDelete(
 	b.listResources(ctx, chatID, messageID, action.ResourceType, action, session)
 }
 
-// handleReplyKeyboard routes a tap on the persistent bottom bar.
-//
-// A reply keyboard sends its label back as plain message text, so a tap is
-// recognised by matching that exact string. The labels come from menus rather
-// than being spelled out here: when both sides carried their own literals, a
-// relabelled button stopped matching and silently fell through to the main menu.
-// The bare lowercase spellings stay as a typed-command convenience.
+func (b *Bot) deleteResourceForMenu(
+	ctx context.Context,
+	gvr schema.GroupVersionResource,
+	namespace,
+	name string,
+	session *types.UserSession,
+) error {
+	client := b.K8sClientForSession(session)
+	return client.DeleteResource(ctx, gvr, namespace, name, &metav1.DeleteOptions{})
+}
+
+// K8sClientForSession returns a Kubernetes client impersonated for the given session's user.
+// If impersonation is not configured or not applicable for this user, returns the base client.
+func (b *Bot) K8sClientForSession(session *types.UserSession) *k8s.Client {
+	var userID int64
+	if session != nil {
+		userID = session.UserID
+	}
+	return b.K8sClientForUser(userID)
+}
+
 func (b *Bot) handleReplyKeyboard(ctx context.Context, msg *botmodels.Message, session *types.UserSession) bool {
 	switch msg.Text {
 	case menus.LabelResources, "resources":
@@ -979,11 +1007,11 @@ func (b *Bot) handleReplyKeyboard(ctx context.Context, msg *botmodels.Message, s
 		return true
 	case menus.LabelLogs, cmdLogs:
 		b.SendMessage(msg.Chat.ID,
-			"Usage: <code>/logs &lt;pod&gt; [-c container] [-n namespace] [-f] [--tail N]</code>")
+			"Usage: <code>/logs <pod> [-c container] [-n namespace] [-f] [--tail N]</code>")
 		return true
 	case menus.LabelExec, "exec":
 		b.SendMessage(msg.Chat.ID,
-			"Usage: <code>/exec &lt;pod&gt; [-c container] -n &lt;namespace&gt; -- &lt;command&gt;</code>")
+			"Usage: <code>/exec <pod> [-c container] -n <namespace> -- <command></code>")
 		return true
 	case menus.LabelContexts, "contexts":
 		b.runCommand(ctx, "contexts", nil, msg.Chat.ID, session)
@@ -1110,15 +1138,6 @@ func (b *Bot) getOrCreateSession(userID int64) *types.UserSession {
 		State:     make(map[string]interface{}),
 	})
 	return val.(*types.UserSession)
-}
-
-func (b *Bot) deleteResourceForMenu(
-	ctx context.Context,
-	gvr schema.GroupVersionResource,
-	namespace,
-	name string,
-) error {
-	return b.k8sClient.DeleteResource(ctx, gvr, namespace, name, &metav1.DeleteOptions{})
 }
 
 // SendRich sends a Rich Message (native tables, headings, collapsible sections).
@@ -1253,20 +1272,22 @@ func (b *Bot) IsUserAllowed(userID int64) bool {
 func (b *Bot) K8sClientForUser(userID int64) *k8s.Client {
 	user, groups, enabled := b.config.GetImpersonationForUser(userID)
 	if !enabled {
+		b.logger.Debug("Impersonation disabled for user, using base client",
+			zap.Int64("telegram_user_id", userID))
 		return b.k8sClient
 	}
 
 	client, err := b.k8sClient.ImpersonatedClient(user, groups)
 	if err != nil {
 		b.logger.Error("Failed to create impersonated client, falling back to base client",
-			zap.Int64("user_id", userID),
+			zap.Int64("telegram_user_id", userID),
 			zap.String("impersonate_user", user),
 			zap.Strings("impersonate_groups", groups),
 			zap.Error(err))
 		return b.k8sClient
 	}
 
-	b.logger.Debug("Using impersonated K8s client",
+	b.logger.Info("Using impersonated K8s client",
 		zap.Int64("telegram_user_id", userID),
 		zap.String("impersonate_user", user),
 		zap.Strings("impersonate_groups", groups))
