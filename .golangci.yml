@@ -47,84 +47,45 @@ linters:
   disable:
     - gochecknoglobals
     - wsl
-    # testpackage wants every _test.go in a separate foo_test package. This
-    # codebase deliberately white-box tests unexported behaviour — callback
-    # parsing, the token store's internal maps, drain's skip rules. Satisfying
-    # it would mean exporting internals for the tests' benefit, which is worse
-    # than the thing it warns about.
     - testpackage
-    # golint was archived upstream and is fully inactivated in golangci-lint,
-    # so enabling it only emits "this linter is fully inactivated" errors.
-    # revive (enabled above) is its replacement.
-    # tenv is deprecated in favour of usetesting.
 
-linters-settings:
-  depguard:
-    # depguard v2 denies every import unless a rule permits it, so an empty
-    # config fails on the entire dependency tree. Rather than list every allowed
-    # package, the deny list encodes the two invariants worth enforcing.
-    rules:
-      no-subprocess:
-        # telectl's central design promise: it talks to the Kubernetes API
-        # server through client-go and never shells out. kubectl is not a
-        # dependency and is not in the container image. An os/exec import would
-        # silently reintroduce that dependency, so it is denied here rather
-        # than left to code review.
-        #
-        # Note: client-go itself may exec a kubeconfig credential plugin
-        # (e.g. kubelogin) on the user's behalf. That is declared by the
-        # operator's kubeconfig, not by this codebase.
-        files:
-          - "!**/*_test.go"
-        deny:
-          - pkg: "os/exec"
-            desc: "telectl must not spawn processes; use client-go against the API server"
-          - pkg: "io/ioutil"
-            desc: "deprecated; use io and os"
+  settings:
+    depguard:
+      rules:
+        no-subprocess:
+          files:
+            - "!**/*_test.go"
+          deny:
+            - pkg: "os/exec"
+              desc: "telectl must not spawn processes; use client-go against the API server"
+            - pkg: "io/ioutil"
+              desc: "deprecated; use io and os"
 
-  funlen:
-    lines: 100
-    statements: 50
+    funlen:
+      lines: 100
+      statements: 50
 
-  gocyclo:
-    min-complexity: 15
+    gocyclo:
+      min-complexity: 15
 
-  goconst:
-    min-occurrences: 3
-    # Test tables legitimately repeat literals like method names; extracting
-    # them hurts readability of the table.
-    ignore-tests: true
+    goconst:
+      min-occurrences: 3
+      ignore-tests: true
 
-  lll:
-    line-length: 120
+    lll:
+      line-length: 120
 
-  govet:
-    enable:
-      - shadow
+    govet:
+      enable:
+        - shadow
 
-  revive:
-    rules:
-      - name: exported
-        disabled: false
-      - name: package-comments
-        disabled: false
+    revive:
+      rules:
+        - name: exported
+          disabled: false
+        - name: package-comments
+          disabled: false
 
 issues:
-  # Report everything, not just the default first 50 per linter — a truncated
-  # list makes it impossible to tell whether a fix cleared the backlog.
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - funlen
-        - lll
-        - gocyclo
-        - dupl
-        - unparam
-        - gosec
-    # Cobra's command tree is conventionally assembled in init(), and the
-    # generated-style fixture builders in tests are not worth splitting.
-    - path: cmd/telectl/cmd/root\.go
-      linters:
-        - gochecknoinits
