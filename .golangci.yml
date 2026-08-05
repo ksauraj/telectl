@@ -23,8 +23,6 @@ linters:
     - gocritic
     - gocyclo
     - godot
-    - goimports
-    - goprintffuncname
     - gosec
     - gosimple
     - govet
@@ -83,3 +81,8 @@ linters:
           disabled: false
         - name: package-comments
           disabled: false
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
