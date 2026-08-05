@@ -50,7 +50,7 @@ func (h *ExecHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 
 	container, command := parseExecArgs(args)
 
-	client := h.getK8sClient()
+	client := h.getK8sClient(session)
 
 	// Check if pod exists and get containers
 	pod, err := client.GetPod(ctx, namespace, podName)
@@ -197,7 +197,7 @@ func (h *ExecHandler) startInteractiveSession(
 
 	// Start exec in background
 	go func() {
-		err := h.getK8sClient().ExecInPod(execCtx, k8s.ExecOptions{
+		err := h.getK8sClient(session).ExecInPod(execCtx, k8s.ExecOptions{
 			Namespace: namespace,
 			PodName:   podName,
 			Container: container,

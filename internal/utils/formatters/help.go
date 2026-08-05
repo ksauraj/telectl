@@ -9,7 +9,7 @@ package formatters
 // was silently dead: the text used Markdown V1 `*bold*` but was sent as
 // MarkdownV2, and the error was discarded.
 //
-// Angle brackets in placeholders must stay entity-escaped (&lt;pod&gt;), or
+// Angle brackets in placeholders must stay entity-escaped (<pod>), or
 // Telegram parses them as unknown tags and rejects the message.
 const HelpText = `<b>telectl command reference</b>
 
@@ -52,6 +52,11 @@ const HelpText = `<b>telectl command reference</b>
 <b>Operations</b>
 /restart deployment &lt;name&gt; [-n namespace]
 /scale deployment &lt;name&gt; &lt;replicas&gt; [-n namespace]
+
+<b>Info</b>
+/about                     Show version, links, and project info
+/version                   Show version and Kubernetes server version
+/config                    Show current configuration
 
 <b>Global flags</b>
 -n, --namespace      Namespace (default: session, else 'default')

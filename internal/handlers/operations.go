@@ -33,7 +33,7 @@ func (h *RestartHandler) Handle(ctx context.Context, msg *tg.Message, args []str
 		return nil
 	}
 
-	client := h.getK8sClient()
+	client := h.getK8sClient(session)
 
 	if h.getConfig().Kubernetes.DryRun {
 		h.sendResponse(msg.Chat.ID, fmt.Sprintf("[DRY RUN] Would restart deployment %s/%s", namespace, name))
@@ -88,7 +88,7 @@ func (h *ScaleHandler) Handle(ctx context.Context, msg *tg.Message, args []strin
 		return nil
 	}
 
-	client := h.getK8sClient()
+	client := h.getK8sClient(session)
 
 	if h.getConfig().Kubernetes.DryRun {
 		h.sendResponse(msg.Chat.ID, fmt.Sprintf(

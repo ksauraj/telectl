@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "telectl.fullname" . }}-config
+  labels:
+    {{- include "telectl.labels" . | nindent 4 }}
+data:
+  telectl.yaml: |
+    telegram:
+      parse_mode: "MarkdownV2"
+      webhook_port: 8443
+    kubernetes:
+      default_namespace: {{ .Values.kubernetes.defaultNamespace | quote }}
+      {{- if .Values.kubernetes.context }}
+      context: {{ .Values.kubernetes.context | quote }}
+      {{- end }}
+      {{- if .Values.kubernetes.clusterName }}
+      cluster_name: {{ .Values.kubernetes.clusterName | quote }}
+      {{- end }}
+      timeout: {{ .Values.kubernetes.timeout }}
+      dry_run: {{ .Values.kubernetes.dryRun }}
+      burst: {{ .Values.kubernetes.burst }}
+      qps: {{ .Values.kubernetes.qps }}
+    {{- if .Values.impersonation.enabled }}
+    impersonation:
+      enabled: {{ .Values.impersonation.enabled }}
+      {{- if .Values.impersonation.defaultUser }}
+      default_user: {{ .Values.impersonation.defaultUser | quote }}
+      {{- end }}
+      {{- if .Values.impersonation.defaultGroups }}
+      default_groups:
+{{- range .Values.impersonation.defaultGroups }}
+        - {{ . | quote }}
+{{- end }}
+      {{- end }}
+      {{- if .Values.impersonation.userMapping }}
+      user_mapping:
+{{- range $telegramID, $mapping := .Values.impersonation.userMapping }}
+        {{ $telegramID | quote }}:
+          {{- if $mapping.user }}
+          user: {{ $mapping.user | quote }}
+          {{- end }}
+          {{- if $mapping.groups }}
+          groups:
+{{- range $mapping.groups }}
+            - {{ . | quote }}
+{{- end }}
+          {{- end }}
+{{- end }}
+      {{- end }}
+    {{- end }}
+    logging:
+      level: {{ .Values.logging.level | quote }}
+      format: {{ .Values.logging.format | quote }}
+      output: {{ .Values.logging.output | quote }}
+    bot:
+      max_message_length: {{ .Values.bot.maxMessageLength }}
+      command_prefix: {{ .Values.bot.commandPrefix | quote }}
+      enable_markdown: {{ .Values.bot.enableMarkdown }}
+      rate_limit: {{ .Values.bot.rateLimit }}
+      enable_menu_button: {{ .Values.bot.enableMenuButton }}
+      enable_reply_keyboard: {{ .Values.bot.enableReplyKeyboard }}
+      menu_page_size: {{ .Values.bot.menuPageSize }}
+      allowed_commands:
+{{- range .Values.bot.allowedCommands }}
+        - {{ . | quote }}
+{{- end }}

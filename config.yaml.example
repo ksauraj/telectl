@@ -56,6 +56,10 @@ kubernetes:
   # explicitly, so a dry run is never mistaken for a real change.
   dry_run: false
 
+  # Cluster name for display purposes (shown in /config, /version, main menu)
+  # If empty, uses the current kubeconfig context name
+  cluster_name: ""
+
   # Not implemented yet; read but unused.
   impersonate_user: ""
   impersonate_groups: []
@@ -64,6 +68,32 @@ kubernetes:
   # bot.rate_limit below, which throttles per Telegram user.
   burst: 10
   qps: 5.0
+
+# Impersonation configuration
+# When enabled, the bot will impersonate different K8s users/groups
+# based on the Telegram user ID. This allows per-user RBAC.
+impersonation:
+  # Enable impersonation feature
+  enabled: false
+
+  # Default user to impersonate when no specific mapping exists
+  # Can be a username or serviceaccount (e.g., "system:serviceaccount:default:readonly")
+  default_user: ""
+
+  # Default groups to impersonate when no specific mapping exists
+  default_groups: []
+
+  # Per-Telegram-user mapping to K8s user/groups
+  # Key is the Telegram user ID (as string), value is user/groups
+  # Example:
+  # user_mapping:
+  #   "123456789":    # Telegram user ID
+  #     user: "admin-user"
+  #     groups: ["system:masters", "platform-team"]
+  #   "987654321":
+  #     user: "dev-user"
+  #     groups: ["developers"]
+  user_mapping: {}
 
 logging:
   # Log level: debug, info, warn, error
@@ -100,6 +130,7 @@ bot:
   allowed_commands:
     - "start"
     - "help"
+    - "about"
     - "version"
     - "get"
     - "describe"

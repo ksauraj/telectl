@@ -291,3 +291,11 @@ func pluralKind(kind string, n int) string {
 		return kind + "s"
 	}
 }
+
+// RichAbout renders the about/info message with proper formatting.
+func RichAbout(text string) string {
+	d := tg.NewRichDoc()
+	d.Heading(3, "About telectl")
+	d.Paragraph(text)
+	return d.String()
+}

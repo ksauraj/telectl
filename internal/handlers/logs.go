@@ -32,7 +32,7 @@ func (h *LogsHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 
 	opts := parseLogFlags(podName, namespace, args)
 
-	client := h.getK8sClient()
+	client := h.getK8sClient(session)
 
 	// If follow mode, we need to stream
 	if opts.Follow {

@@ -48,7 +48,7 @@ func (h *DescribeHandler) Handle(
 		namespace = h.getNamespace(session, args[2:], h.getConfig().Kubernetes.DefaultNamespace)
 	}
 
-	client := h.getK8sClient()
+	client := h.getK8sClient(session)
 	resource, err := client.GetResource(ctx, schema.GroupVersionResource{
 		Group:    gvr.Group,
 		Version:  gvr.Version,

@@ -31,7 +31,7 @@ func (h *TopHandler) Handle(ctx context.Context, msg *tg.Message, args []string,
 	resource := strings.ToLower(args[0])
 	namespace := h.getNamespace(session, args[1:], h.getConfig().Kubernetes.DefaultNamespace)
 
-	client := h.getK8sClient()
+	client := h.getK8sClient(session)
 
 	switch resource {
 	case "pod", "pods", "po":
@@ -133,7 +133,7 @@ func NewEventsHandler(b types.BotInterface) *EventsHandler {
 func (h *EventsHandler) Handle(ctx context.Context, msg *tg.Message, args []string, session *types.UserSession) error {
 	namespace := h.getNamespace(session, args, h.getConfig().Kubernetes.DefaultNamespace)
 
-	client := h.getK8sClient()
+	client := h.getK8sClient(session)
 	events, err := client.GetEvents(ctx, namespace, "")
 	if err != nil {
 		return fmt.Errorf("failed to get events: %w", err)
@@ -178,7 +178,7 @@ func (h *WatchHandler) Handle(ctx context.Context, msg *tg.Message, args []strin
 		return nil
 	}
 
-	client := h.getK8sClient()
+	client := h.getK8sClient(session)
 
 	// Start watch
 	watcher, err := client.WatchResources(ctx, schema.GroupVersionResource{
