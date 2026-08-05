@@ -1,6 +1,6 @@
 ---
 title: Two Deployment Modes
-nav_order: 6.5
+nav_order: 10
 ---
 
 # Two Ways to Run telectl
@@ -42,7 +42,7 @@ helm install telectl telectl/telectl \
 
 ## Setup B — Normal user (bot runs as a binary on your workstation)
 
-telectl runs as a regular process on your machine (or a container you manage
+|telectl| runs as a regular process on your machine (or a container you manage
 yourself, not via the chart). It authenticates with **your** kubeconfig,
 exactly like `kubectl`.
 

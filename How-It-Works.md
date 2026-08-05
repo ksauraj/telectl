@@ -1,6 +1,6 @@
 ---
 title: How It Works
-nav_order: 5
+nav_order: 17
 ---
 
 # How It Works
