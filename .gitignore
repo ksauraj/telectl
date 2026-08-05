@@ -1,0 +1,41 @@
+# Binaries
+# Anchored: a bare "telectl" would also ignore cmd/telectl/.
+/telectl
+dist/
+
+# Go
+*.exe
+*.test
+*.prof
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Config
+config.yaml
+*.kubeconfig
+
+# Logs
+*.log
+
+# Coverage
+coverage.out
+coverage.html
+
+# Vendor
+vendor/
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# AI assistant working notes — local only, not part of the project docs.
+CLAUDE.md

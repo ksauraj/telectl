@@ -1,0 +1,4 @@
+theme: jekyll-theme-cayman
+title: telectl
+description: Telegram bot for Kubernetes cluster management — direct API, per-user RBAC via impersonation.
+show_downloads: false

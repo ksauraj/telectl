@@ -1,0 +1,27 @@
+apiVersion: v1
+entries:
+  telectl:
+  - apiVersion: v2
+    appVersion: 0.1.0
+    created: "2026-08-05T18:46:51.283145614Z"
+    description: A Telegram bot for Kubernetes cluster management
+    digest: b006276769214fad90f491acd5658114b24baad7c8d79ba243c7e6c3c854d370
+    home: https://github.com/ksauraj/telectl
+    keywords:
+    - telegram
+    - bot
+    - kubernetes
+    - k8s
+    - cluster-management
+    maintainers:
+    - email: gitsauraj@gmail.com
+      name: Sauraj Kumar Singh
+      url: https://github.com/ksauraj
+    name: telectl
+    sources:
+    - https://github.com/ksauraj/telectl
+    type: application
+    urls:
+    - https://ksauraj.github.io/telectl/charts/telectl-0.1.0.tgz
+    version: 0.1.0
+generated: "2026-08-05T18:46:51.282160487Z"
