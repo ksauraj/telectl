@@ -171,6 +171,10 @@ jobs:
       # change the registry below.
       - uses: docker/setup-buildx-action@v4
 
+      # Registers QEMU so arm64 build stages can execute on the amd64 runner
+      # (Go module downloads, apk add, etc. run inside the target-arch image).
+      - uses: docker/setup-qemu-action@v4
+
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
