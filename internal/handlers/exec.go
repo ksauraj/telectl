@@ -11,6 +11,7 @@ import (
 	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/utils/formatters"
+	"go.uber.org/zap"
 )
 
 type ExecHandler struct {
@@ -51,6 +52,17 @@ func (h *ExecHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 	container, command := parseExecArgs(args)
 
 	client := h.getK8sClient(session)
+
+	// Log user action with user ID
+	if logger := h.getLogger(); logger != nil {
+		logger.Info("User action: exec",
+			zap.Int64("telegram_user_id", session.UserID),
+			zap.String("namespace", namespace),
+			zap.String("pod", podName),
+			zap.String("container", container),
+			zap.Strings("command", command),
+		)
+	}
 
 	// Check if pod exists and get containers
 	pod, err := client.GetPod(ctx, namespace, podName)

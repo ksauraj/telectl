@@ -8,6 +8,7 @@ import (
 
 	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
+	"go.uber.org/zap"
 )
 
 type RestartHandler struct {
@@ -34,6 +35,15 @@ func (h *RestartHandler) Handle(ctx context.Context, msg *tg.Message, args []str
 	}
 
 	client := h.getK8sClient(session)
+
+	// Log user action with user ID
+	if logger := h.getLogger(); logger != nil {
+		logger.Info("User action: restart deployment",
+			zap.Int64("telegram_user_id", session.UserID),
+			zap.String("namespace", namespace),
+			zap.String("name", name),
+		)
+	}
 
 	if h.getConfig().Kubernetes.DryRun {
 		h.sendResponse(msg.Chat.ID, fmt.Sprintf("[DRY RUN] Would restart deployment %s/%s", namespace, name))
@@ -89,6 +99,16 @@ func (h *ScaleHandler) Handle(ctx context.Context, msg *tg.Message, args []strin
 	}
 
 	client := h.getK8sClient(session)
+
+	// Log user action with user ID
+	if logger := h.getLogger(); logger != nil {
+		logger.Info("User action: scale deployment",
+			zap.Int64("telegram_user_id", session.UserID),
+			zap.String("namespace", namespace),
+			zap.String("name", name),
+			zap.Int32("replicas", int32(replicas)),
+		)
+	}
 
 	if h.getConfig().Kubernetes.DryRun {
 		h.sendResponse(msg.Chat.ID, fmt.Sprintf(
