@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Buildx injects the target platform; the multi-arch build compiles the
 # correct binary per platform instead of always producing amd64.
