@@ -2,7 +2,7 @@ name: CI/CD
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, feat/helm-chart]
     tags: ['v*']
   pull_request:
     branches: [main, master]
