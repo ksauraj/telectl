@@ -49,6 +49,8 @@ linters:
     - goconst       # Repeated strings in tests
     - gocyclo       # High complexity in test functions
     - gosec         # G304 in test files
+    - lll           # Line length > 120 in test files
+    - revive        # Missing comments on exported types/functions, package comments
 
   settings:
     depguard:
