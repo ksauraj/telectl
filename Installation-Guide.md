@@ -1,3 +1,8 @@
+---
+title: Installation Guide
+nav_order: 2
+---
+
 # Installation Guide
 
 ## Prerequisites

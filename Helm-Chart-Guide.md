@@ -1,3 +1,8 @@
+---
+title: Helm Chart Guide
+nav_order: 3
+---
+
 # Helm Chart Guide
 
 Complete guide for deploying telectl with the official Helm chart.

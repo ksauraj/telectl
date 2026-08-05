@@ -1,3 +1,8 @@
+---
+title: Architecture Overview
+nav_order: 4
+---
+
 # Architecture Overview
 
 telectl is a **direct-API** Kubernetes bot: the binary runs inside (or next

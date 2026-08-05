@@ -1,3 +1,8 @@
+---
+title: Security
+nav_order: 8
+---
+
 # Security
 
 telectl's security posture and the operational checklist for deploying it

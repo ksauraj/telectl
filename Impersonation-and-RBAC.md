@@ -1,3 +1,8 @@
+---
+title: Impersonation & RBAC
+nav_order: 6
+---
+
 # Impersonation & RBAC
 
 The security model in one sentence: **the bot never decides who may do what —

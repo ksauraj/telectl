@@ -1,3 +1,8 @@
+---
+title: How It Works
+nav_order: 5
+---
+
 # How It Works
 
 This page walks through the internals: how a tap on a button becomes a

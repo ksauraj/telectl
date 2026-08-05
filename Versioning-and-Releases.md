@@ -1,3 +1,8 @@
+---
+title: Versioning & Releases
+nav_order: 7
+---
+
 # Versioning & Releases
 
 telectl follows **Semantic Versioning 2.0** with Kubernetes-style pre-release

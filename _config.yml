@@ -1,4 +1,39 @@
-theme: jekyll-theme-cayman
+# telectl documentation site — just-the-docs theme (dark)
 title: telectl
-description: Telegram bot for Kubernetes cluster management — direct API, per-user RBAC via impersonation.
-show_downloads: false
+description: >-
+  Telegram bot for Kubernetes cluster management — direct API, per-user RBAC
+  via impersonation.
+
+# just-the-docs is a modern, searchable docs theme that works on GitHub Pages
+# via the jekyll-remote-theme plugin (bundled with the github-pages gem).
+remote_theme: just-the-docs/just-the-docs
+
+# Pitch-black default: force a custom true-black color scheme for everyone.
+# Defined in _sass/color_schemes/pitch-black.scss. Drop the "color_scheme"
+# line (or set "light") to let readers pick via the toggle.
+color_scheme: pitch-black
+
+# Site-wide navigation (replaces the auto-generated list under "Navigation").
+nav_sort: case_insensitive
+
+# --- just-the-docs optional tweaks -------------------------------------------
+# Enable copy buttons on code blocks and a wider content area.
+aux_links:
+  "telectl on GitHub":
+    - "https://github.com/ksauraj/telectl"
+  "Releases":
+    - "https://github.com/ksauraj/telectl/releases"
+  "GHCR":
+    - "https://github.com/ksauraj/telectl/pkgs/container/telectl"
+
+# Show the "Last modified" date on pages.
+last_edit_timestamp: true
+last_edit_time_format: "%b %e %Y at %I:%M %p"
+
+# Use HTML5 details/summary for collapsible layers in diagrams where needed.
+enable_copy_code_button: true
+
+# Mermaid is rendered by GitHub Pages natively inside fenced ```mermaid```
+# blocks — no plugin required.
+markdown: kramdown
+highlighter: rouge

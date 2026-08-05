@@ -1,5 +1,6 @@
 ---
-title: telectl — Telegram bot for Kubernetes
+title: Home
+nav_order: 1
 ---
 
 telectl is a **Telegram bot for Kubernetes cluster management**. Browse pods,
