@@ -12,6 +12,7 @@ import (
 	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
 	"github.com/ksauraj/telectl/internal/utils/formatters"
+	"go.uber.org/zap"
 	"sigs.k8s.io/yaml"
 )
 
@@ -60,7 +61,7 @@ func (b *Bot) showResourceDetail(
 		req.ns = ""
 	}
 
-	resource, err := b.k8sClient.GetResource(ctx, gvr.GVR(), namespace, name)
+	resource, err := b.K8sClientForSession(session).GetResource(ctx, gvr.GVR(), namespace, name)
 	if err != nil {
 		b.reportPaneError(ctx, req, "load "+kind, err)
 		return
@@ -167,7 +168,7 @@ func (b *Bot) dispatchDetailAction(
 // rather than the handler — the menu and the typed command still cannot render
 // the same object differently, because they call the same formatter.
 func (b *Bot) detailDescribe(ctx context.Context, r detailReq) {
-	res, err := b.getResource(ctx, r.kind, r.ns, r.name)
+	res, err := b.getResource(ctx, r.kind, r.ns, r.name, r.session)
 	if err != nil {
 		b.reportPaneError(ctx, r, "describe "+r.kind, err)
 		return
@@ -189,7 +190,7 @@ func (b *Bot) detailPodLogs(ctx context.Context, r detailReq) {
 			opts.TailLines = types.Int64Ptr(n)
 		}
 	}
-	logs, err := b.fetchLogs(ctx, opts)
+	logs, err := b.fetchLogs(ctx, opts, r.session)
 	if err != nil {
 		b.reportPaneError(ctx, r, "read logs", err)
 		return
@@ -208,7 +209,7 @@ func (b *Bot) showResourceHelp(ctx context.Context, r detailReq) {
 		"Actions for "+formatters.EscapeHTML(r.kind))
 }
 
-func (b *Bot) getResource(ctx context.Context, kind, namespace, name string) (*k8s.ResourceInfo, error) {
+func (b *Bot) getResource(ctx context.Context, kind, namespace, name string, session *types.UserSession) (*k8s.ResourceInfo, error) {
 	gvr, known := types.ResourceMap[kind]
 	if !known {
 		return nil, fmt.Errorf("unknown resource type %q", kind)
@@ -216,11 +217,11 @@ func (b *Bot) getResource(ctx context.Context, kind, namespace, name string) (*k
 	if types.IsClusterScoped(kind) {
 		namespace = ""
 	}
-	return b.k8sClient.GetResource(ctx, gvr.GVR(), namespace, name)
+	return b.K8sClientForSession(session).GetResource(ctx, gvr.GVR(), namespace, name)
 }
 
 func (b *Bot) showLabels(ctx context.Context, r detailReq) {
-	res, err := b.getResource(ctx, r.kind, r.ns, r.name)
+	res, err := b.getResource(ctx, r.kind, r.ns, r.name, r.session)
 	if err != nil {
 		b.reportPaneError(ctx, r, "read labels", err)
 		return
@@ -246,7 +247,7 @@ func labelsFallback(r *k8s.ResourceInfo) string {
 // field selector is applied server-side so a busy namespace does not have to be
 // pulled down in full.
 func (b *Bot) showObjectEvents(ctx context.Context, r detailReq) {
-	events, err := b.k8sClient.GetEvents(ctx, r.ns, "involvedObject.name="+r.name)
+	events, err := b.K8sClientForSession(r.session).GetEvents(ctx, r.ns, "involvedObject.name="+r.name)
 	if err != nil {
 		b.reportPaneError(ctx, r, "read events", err)
 		return
@@ -261,7 +262,7 @@ func (b *Bot) showObjectEvents(ctx context.Context, r detailReq) {
 }
 
 func (b *Bot) showSelector(ctx context.Context, r detailReq) {
-	res, err := b.getResource(ctx, r.kind, r.ns, r.name)
+	res, err := b.getResource(ctx, r.kind, r.ns, r.name, r.session)
 	if err != nil {
 		b.reportPaneError(ctx, r, "read selector", err)
 		return
@@ -272,7 +273,7 @@ func (b *Bot) showSelector(ctx context.Context, r detailReq) {
 		return
 	}
 
-	pods, listErr := b.k8sClient.ListPods(ctx, r.ns, selector, "")
+	pods, listErr := b.K8sClientForSession(r.session).ListPods(ctx, r.ns, selector, "")
 	if listErr != nil {
 		b.reportPaneError(ctx, r, "list matching pods", listErr)
 		return
@@ -291,7 +292,7 @@ func (b *Bot) showSelector(ctx context.Context, r detailReq) {
 }
 
 func (b *Bot) showEndpoints(ctx context.Context, r detailReq) {
-	ep, err := b.k8sClient.GetEndpoints(ctx, r.ns, r.name)
+	ep, err := b.K8sClientForSession(r.session).GetEndpoints(ctx, r.ns, r.name)
 	if err != nil {
 		b.reportPaneError(ctx, r, "read endpoints", err)
 		return
@@ -305,7 +306,7 @@ func (b *Bot) showEndpoints(ctx context.Context, r detailReq) {
 // showWorkloadPods lists the pods a deployment/replicaset owns, as a browsable
 // pod list so each result is still tappable.
 func (b *Bot) showWorkloadPods(ctx context.Context, r detailReq) {
-	pods, selector, err := b.k8sClient.ListPodsForWorkload(ctx, r.kind, r.ns, r.name)
+	pods, selector, err := b.K8sClientForSession(r.session).ListPodsForWorkload(ctx, r.kind, r.ns, r.name)
 	if err != nil {
 		b.reportPaneError(ctx, r, "list pods for "+r.kind, err)
 		return
@@ -316,7 +317,7 @@ func (b *Bot) showWorkloadPods(ctx context.Context, r detailReq) {
 }
 
 func (b *Bot) showNodePods(ctx context.Context, r detailReq) {
-	pods, err := b.k8sClient.ListPodsOnNode(ctx, r.name)
+	pods, err := b.K8sClientForSession(r.session).ListPodsOnNode(ctx, r.name)
 	if err != nil {
 		b.reportPaneError(ctx, r, "list pods on node", err)
 		return
@@ -363,7 +364,7 @@ func (b *Bot) showPodResults(
 }
 
 func (b *Bot) showNodeTop(ctx context.Context, r detailReq) {
-	metrics, err := b.k8sClient.GetNodeMetrics(ctx)
+	metrics, err := b.K8sClientForSession(r.session).GetNodeMetrics(ctx)
 	if err != nil {
 		// metrics-server is optional; say so rather than showing a raw 404.
 		b.showNotice(ctx, r, "Metrics unavailable for "+r.name,
@@ -388,7 +389,7 @@ func (b *Bot) showNodeTop(ctx context.Context, r detailReq) {
 }
 
 func (b *Bot) showRolloutHistory(ctx context.Context, r detailReq) {
-	revisions, err := b.k8sClient.RolloutHistory(ctx, r.ns, r.name)
+	revisions, err := b.K8sClientForSession(r.session).RolloutHistory(ctx, r.ns, r.name)
 	if err != nil {
 		b.reportPaneError(ctx, r, "read rollout history", err)
 		return
@@ -404,7 +405,7 @@ func (b *Bot) showRolloutHistory(ctx context.Context, r detailReq) {
 // take a lock, so an apply from here could silently overwrite a change someone
 // else made seconds earlier.
 func (b *Bot) showManifest(ctx context.Context, r detailReq) {
-	res, err := b.getResource(ctx, r.kind, r.ns, r.name)
+	res, err := b.getResource(ctx, r.kind, r.ns, r.name, r.session)
 	if err != nil {
 		b.reportPaneError(ctx, r, "read manifest", err)
 		return
@@ -450,14 +451,15 @@ func (b *Bot) setNodeSchedulable(ctx context.Context, r detailReq, schedulable b
 		verb = "Uncordon"
 	}
 
-	if err := b.k8sClient.SetNodeSchedulable(ctx, r.name, schedulable); err != nil {
+	client := b.K8sClientForSession(r.session)
+	if err := client.SetNodeSchedulable(ctx, r.name, schedulable); err != nil {
 		b.reportPaneError(ctx, r, strings.ToLower(verb)+" node", err)
 		return
 	}
 
 	// Under dry run nothing changed, so re-rendering the pane would show the old
 	// state with no hint that the tap was a no-op. Say so instead.
-	if b.k8sClient.IsDryRun() {
+	if client.IsDryRun() {
 		b.showNotice(ctx, r, "Dry run — "+strings.ToLower(verb)+" not applied",
 			"telectl is running with dry-run enabled, so "+r.name+" was not changed.")
 		return
@@ -471,7 +473,7 @@ func (b *Bot) setNodeSchedulable(ctx context.Context, r detailReq, schedulable b
 // every eligible pod on a node; it is the most disruptive thing this bot can
 // do from a single tap.
 func (b *Bot) confirmDrain(ctx context.Context, r detailReq) {
-	pods, err := b.k8sClient.ListPodsOnNode(ctx, r.name)
+	pods, err := b.K8sClientForSession(r.session).ListPodsOnNode(ctx, r.name)
 	if err != nil {
 		b.reportPaneError(ctx, r, "inspect node before drain", err)
 		return
@@ -495,7 +497,8 @@ func (b *Bot) confirmDrain(ctx context.Context, r detailReq) {
 }
 
 func (b *Bot) drainNode(ctx context.Context, r detailReq) {
-	res, err := b.k8sClient.DrainNode(ctx, r.name)
+	client := b.K8sClientForSession(r.session)
+	res, err := client.DrainNode(ctx, r.name)
 	if err != nil {
 		b.reportPaneError(ctx, r, "drain node", err)
 		return
@@ -514,11 +517,12 @@ func (b *Bot) showScaleOptions(ctx context.Context, r detailReq) {
 		current int32
 		err     error
 	)
+	client := b.K8sClientForSession(r.session)
 	switch r.kind {
 	case kindDeployments:
-		current, err = b.k8sClient.GetDeploymentReplicas(ctx, r.ns, r.name)
+		current, err = client.GetDeploymentReplicas(ctx, r.ns, r.name)
 	case kindReplicaSets:
-		current, err = b.k8sClient.GetReplicaSetReplicas(ctx, r.ns, r.name)
+		current, err = client.GetReplicaSetReplicas(ctx, r.ns, r.name)
 	default:
 		b.showNotice(ctx, r, "Not scalable", "Only deployments and replicasets can be scaled.")
 		return
@@ -551,11 +555,20 @@ func (b *Bot) applyScale(ctx context.Context, r detailReq) {
 		return
 	}
 
+	client := b.K8sClientForSession(r.session)
+	b.logger.Info("User action: scale resource",
+		zap.Int64("telegram_user_id", r.session.UserID),
+		zap.String("resource_type", r.kind),
+		zap.String("namespace", r.ns),
+		zap.String("name", r.name),
+		zap.Int32("replicas", int32(replicas)),
+	)
+
 	switch r.kind {
 	case kindDeployments:
-		err = b.k8sClient.ScaleDeployment(ctx, r.ns, r.name, int32(replicas))
+		err = client.ScaleDeployment(ctx, r.ns, r.name, int32(replicas))
 	case kindReplicaSets:
-		err = b.k8sClient.ScaleReplicaSet(ctx, r.ns, r.name, int32(replicas))
+		err = client.ScaleReplicaSet(ctx, r.ns, r.name, int32(replicas))
 	default:
 		b.showNotice(ctx, r, "Not scalable", "Only deployments and replicasets can be scaled.")
 		return
@@ -565,7 +578,7 @@ func (b *Bot) applyScale(ctx context.Context, r detailReq) {
 		return
 	}
 
-	if b.k8sClient.IsDryRun() {
+	if client.IsDryRun() {
 		b.showNotice(ctx, r, "Dry run — scale not applied",
 			fmt.Sprintf("telectl is running with dry-run enabled, so %s was not scaled to %d.",
 				r.name, replicas))
@@ -585,7 +598,7 @@ func (b *Bot) promptCustomScale(ctx context.Context, r detailReq) {
 
 func (b *Bot) showLogOptions(ctx context.Context, r detailReq) {
 	container := ""
-	if pod, err := b.k8sClient.GetPod(ctx, r.ns, r.name); err == nil {
+	if pod, err := b.K8sClientForSession(r.session).GetPod(ctx, r.ns, r.name); err == nil {
 		if names := podContainers(pod); len(names) > 0 {
 			container = names[0]
 		}
@@ -634,7 +647,7 @@ func (b *Bot) showFollowLogs(ctx context.Context, r detailReq) {
 	logs, err := b.fetchLogs(ctx, k8s.PodLogOptions{
 		Namespace: r.ns, PodName: r.name, Container: r.container,
 		TailLines: types.Int64Ptr(200),
-	})
+	}, r.session)
 	if err != nil {
 		b.reportPaneError(ctx, r, "read logs", err)
 		return
@@ -649,7 +662,7 @@ func (b *Bot) showPreviousLogs(ctx context.Context, r detailReq) {
 	logs, err := b.fetchLogs(ctx, k8s.PodLogOptions{
 		Namespace: r.ns, PodName: r.name, Container: r.container,
 		Previous: true, TailLines: types.Int64Ptr(200),
-	})
+	}, r.session)
 	if err != nil {
 		// The common case is a container that has never restarted, which the
 		// API server reports as a somewhat opaque error.
@@ -663,8 +676,8 @@ func (b *Bot) showPreviousLogs(ctx context.Context, r detailReq) {
 		"Previous logs for "+formatters.EscapeHTML(r.name))
 }
 
-func (b *Bot) fetchLogs(ctx context.Context, opts k8s.PodLogOptions) (string, error) {
-	reader, err := b.k8sClient.GetPodLogs(ctx, opts)
+func (b *Bot) fetchLogs(ctx context.Context, opts k8s.PodLogOptions, session *types.UserSession) (string, error) {
+	reader, err := b.K8sClientForSession(session).GetPodLogs(ctx, opts)
 	if err != nil {
 		return "", err
 	}
@@ -685,7 +698,7 @@ func (b *Bot) showNamespaceSummary(ctx context.Context, r detailReq) {
 		b.showNotice(ctx, r, "No namespace selected", "Pick a namespace first.")
 		return
 	}
-	summary := b.k8sClient.SummariseNamespace(ctx, r.name)
+	summary := b.K8sClientForSession(r.session).SummariseNamespace(ctx, r.name)
 	b.showVerbResult(ctx, r, formatters.RichNamespaceSummary(summary),
 		"Contents of "+formatters.EscapeHTML(r.name))
 }

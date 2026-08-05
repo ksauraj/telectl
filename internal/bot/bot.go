@@ -489,7 +489,7 @@ func (b *Bot) showTopPane(
 		namespace = "" // node metrics are cluster-scoped
 	}
 
-	metrics, err := b.k8sClient.ListResources(ctx, schema.GroupVersionResource{
+	metrics, err := b.K8sClientForSession(session).ListResources(ctx, schema.GroupVersionResource{
 		Group: "metrics.k8s.io", Version: "v1beta1", Resource: kind,
 	}, namespace, "", "")
 	if err != nil {
@@ -507,7 +507,7 @@ func (b *Bot) showTopPane(
 // showEventsPane renders recent events for the session's namespace.
 func (b *Bot) showEventsPane(ctx context.Context, chatID int64, messageID int, session *types.UserSession) {
 	namespace := session.GetNamespace()
-	events, err := b.k8sClient.GetEvents(ctx, namespace, "")
+	events, err := b.K8sClientForSession(session).GetEvents(ctx, namespace, "")
 	if err != nil {
 		b.showSectionNotice(ctx, chatID, messageID, menus.SectionMonitor,
 			"Could not read events", err.Error())
@@ -622,7 +622,7 @@ func (b *Bot) listResources(
 		namespace = ""
 	}
 
-	resources, err := b.k8sClient.ListResources(ctx, gvr.GVR(), namespace, "", "")
+	resources, err := b.K8sClientForSession(session).ListResources(ctx, gvr.GVR(), namespace, "", "")
 	if err != nil {
 		b.logger.Error("Failed to list resources for menu",
 			zap.String("type", resourceType), zap.String("namespace", namespace), zap.Error(err))
@@ -767,7 +767,7 @@ func (b *Bot) showNamespacePicker(ctx context.Context, chatID int64, messageID, 
 		return
 	}
 
-	nsResources, err := b.k8sClient.ListNamespaces(ctx, "")
+	nsResources, err := b.K8sClientForSession(session).ListNamespaces(ctx, "")
 	if err != nil {
 		b.logger.Error("Failed to list namespaces for picker", zap.Error(err))
 		b.showSectionNotice(ctx, chatID, messageID, menus.SectionSettings,
