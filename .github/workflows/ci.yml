@@ -160,39 +160,29 @@ jobs:
     runs-on: ubuntu-latest
     needs: [tidy, test, lint]
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v7
 
-      # Docker Hub credentials are optional: without them the image is built to
-      # prove the Dockerfile still works, but not pushed. Previously this job
-      # failed outright when the secrets were absent, and because `release`
-      # depended on it, a missing secret blocked the entire release.
-      - name: Check for Docker Hub credentials
-        id: creds
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-        run: |
-          if [ -n "$DOCKERHUB_USERNAME" ]; then
-            echo "push=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "push=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::DOCKERHUB_USERNAME is not set; building without pushing."
-          fi
-
+      # GHCR requires no extra secrets: GITHUB_TOKEN is available automatically.
+      # If you prefer Docker Hub, set DOCKERHUB_USERNAME/DOCKERHUB_TOKEN and
+      # change the registry below.
       - uses: docker/setup-buildx-action@v4
 
-      - name: Log in to Docker Hub
-        if: steps.creds.outputs.push == 'true'
+      - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ksauraj/${{ env.BINARY_NAME }}
+          images: ghcr.io/${{ github.repository_owner }}/${{ env.BINARY_NAME }}
           tags: |
             type=ref,event=tag
             type=sha,prefix=
@@ -203,7 +193,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ steps.creds.outputs.push == 'true' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

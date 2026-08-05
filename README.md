@@ -7,7 +7,7 @@ binary to ship in the container image.
 [![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![CI](https://github.com/ksauraj/telectl/actions/workflows/ci.yml/badge.svg)](https://github.com/ksauraj/telectl/actions)
-[![Docker](https://img.shields.io/badge/Docker-ksauraj%2Ftelectl-2496ED?logo=docker)](https://hub.docker.com/r/ksauraj/telectl)
+[![Docker](https://img.shields.io/badge/Docker-ghcr.io%2Fksauraj%2Ftelectl-2496ED?logo=docker)](https://github.com/ksauraj/telectl/pkgs/container/telectl)
 
 ## What it does
 
@@ -48,6 +48,35 @@ the pod, not `sh` with the container set to `echo hi`.
 - A Telegram bot token from [@BotFather](https://t.me/BotFather)
 - A kubeconfig with access to your cluster
 
+### Install with Helm (Recommended for Kubernetes)
+
+```bash
+# From the chart repository
+helm repo add telectl https://ksauraj.github.io/telectl/
+helm repo update
+
+helm install telectl telectl/telectl \
+  --namespace telectl \
+  --create-namespace \
+  --set telegram.botToken="YOUR_BOT_TOKEN" \
+  --set telegram.allowedUserIds="{123456789}"
+```
+
+Or from the local chart:
+
+```bash
+git clone https://github.com/ksauraj/telectl
+cd telectl
+
+helm install telectl ./charts/telectl \
+  --namespace telectl \
+  --create-namespace \
+  --set telegram.botToken="YOUR_BOT_TOKEN" \
+  --set telegram.allowedUserIds="{123456789}"
+```
+
+See [charts/telectl/README.md](charts/telectl/README.md) for complete configuration options, RBAC modes, and impersonation setup.
+
 ### Install from source
 
 ```bash
@@ -65,7 +94,7 @@ go install github.com/ksauraj/telectl/cmd/telectl@latest
 ### Docker
 
 ```bash
-docker pull ksauraj/telectl:latest
+docker pull ghcr.io/ksauraj/telectl:latest
 ```
 
 ## Configuration
@@ -110,7 +139,7 @@ docker run --rm -it \
   -v ~/.kube:/home/telectl/.kube:ro \
   -v ~/.config/telectl/telectl.yaml:/app/config.yaml:ro \
   -e TELEGRAM_BOT_TOKEN=xxx \
-  ksauraj/telectl:latest
+  ghcr.io/ksauraj/telectl:latest
 ```
 
 ## Usage
