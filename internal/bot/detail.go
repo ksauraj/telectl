@@ -199,7 +199,7 @@ func (b *Bot) detailPodLogs(ctx context.Context, r detailReq) {
 	if r.container != "" {
 		label += " · " + r.container
 	}
-	b.showVerbResult(ctx, r, formatters.RichLogs(label, "", logs),
+	b.showLogResult(ctx, r, formatters.RichLogs(label, "", logs),
 		"Logs for "+formatters.EscapeHTML(label))
 }
 
@@ -655,7 +655,7 @@ func (b *Bot) showFollowLogs(ctx context.Context, r detailReq) {
 	rich := formatters.RichLogs(r.ns+"/"+r.name, r.container, logs) +
 		"\n\n> Live streaming is not available in chat. This is the last 200 " +
 		"lines — tap again for a fresh snapshot."
-	b.showVerbResult(ctx, r, rich, "Last 200 lines of "+formatters.EscapeHTML(r.name))
+	b.showLogResult(ctx, r, rich, "Last 200 lines of "+formatters.EscapeHTML(r.name))
 }
 
 func (b *Bot) showPreviousLogs(ctx context.Context, r detailReq) {
@@ -671,7 +671,7 @@ func (b *Bot) showPreviousLogs(ctx context.Context, r detailReq) {
 				"earlier instance to read. "+err.Error())
 		return
 	}
-	b.showVerbResult(ctx, r,
+	b.showLogResult(ctx, r,
 		formatters.RichLogs(r.ns+"/"+r.name+" (previous)", r.container, logs),
 		"Previous logs for "+formatters.EscapeHTML(r.name))
 }
@@ -690,7 +690,14 @@ func (b *Bot) fetchLogs(ctx context.Context, opts k8s.PodLogOptions, session *ty
 	if len(raw) == 0 {
 		return "(no output)", nil
 	}
-	return formatters.FormatPodLogs(string(raw), 200), nil
+	// Cap only when the caller did not ask for a specific tail: the API server
+	// already limits the fetch when TailLines is set, so re-capping here would
+	// discard lines the user explicitly requested.
+	formatted := string(raw)
+	if opts.TailLines == nil || *opts.TailLines <= 0 {
+		formatted = formatters.FormatPodLogs(formatted, 200)
+	}
+	return formatted, nil
 }
 
 func (b *Bot) showNamespaceSummary(ctx context.Context, r detailReq) {

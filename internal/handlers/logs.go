@@ -59,9 +59,14 @@ func (h *LogsHandler) Handle(ctx context.Context, msg *tg.Message, args []string
 		return nil
 	}
 
-	// The old text path wrapped output in ``` fences but sent it as HTML, so the
-	// fences showed up literally. The rich path emits a real code block.
-	formatted := formatters.FormatPodLogs(string(logs), 100)
+	// Truncate only when the user did not ask for a specific tail. When --tail
+	// is set, the API server already limits the fetch, so capping again here
+	// would silently discard lines the user explicitly asked for (e.g. a
+	// --tail 500 request must not be cut back to 100).
+	formatted := string(logs)
+	if opts.TailLines == nil || *opts.TailLines <= 0 {
+		formatted = formatters.FormatPodLogs(formatted, 100)
+	}
 	h.bot.SendRich(msg.Chat.ID,
 		formatters.RichLogs(namespace+"/"+podName, opts.Container, formatted),
 		fmt.Sprintf("Logs for %s/%s:\n%s", namespace, podName, formatted))
@@ -161,7 +166,12 @@ func (h *LogsHandler) streamLogs(ctx context.Context, chatID int64, client *k8s.
 		return err
 	}
 
-	formatted := formatters.FormatPodLogs(string(logs), 200)
+	// Respect an explicit --tail; cap at a sane default only when the user did
+	// not ask for a specific number of lines.
+	formatted := string(logs)
+	if opts.TailLines == nil || *opts.TailLines <= 0 {
+		formatted = formatters.FormatPodLogs(formatted, 200)
+	}
 	h.bot.SendRich(chatID,
 		formatters.RichLogs(opts.Namespace+"/"+opts.PodName, opts.Container, formatted),
 		fmt.Sprintf("Logs for %s/%s (last 200 lines):\n%s", opts.Namespace, opts.PodName, formatted))

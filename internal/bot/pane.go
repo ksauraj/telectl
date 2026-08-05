@@ -48,6 +48,10 @@ type pane struct {
 	rich     string // Rich Markdown body
 	fallback string // plain HTML, used when rich is rejected
 	kb       *tg.InlineKeyboardMarkup
+	// keepTail truncates from the top instead of the bottom when the body is
+	// too long. Logs are the canonical case: the newest lines are at the end,
+	// and cutting the tail would discard exactly the output the user asked for.
+	keepTail bool
 }
 
 // showPane renders a pane into the message the callback came from.
@@ -56,8 +60,13 @@ type pane struct {
 // typed command rather than a button tap — so it sends one instead. That is the
 // only path that adds a message to the chat.
 func (b *Bot) showPane(ctx context.Context, chatID int64, messageID int, p pane) {
-	p.rich = truncateForPane(p.rich)
-	p.fallback = truncateForPane(p.fallback)
+	if p.keepTail {
+		p.rich = truncateForPaneTail(p.rich)
+		p.fallback = truncateForPaneTail(p.fallback)
+	} else {
+		p.rich = truncateForPane(p.rich)
+		p.fallback = truncateForPane(p.fallback)
+	}
 
 	if messageID == 0 {
 		b.SendRichKeyboard(chatID, p.rich, p.fallback, p.kb)
@@ -86,6 +95,25 @@ func truncateForPane(s string) string {
 	return cut + "\n\n… truncated to fit one message."
 }
 
+// truncateForPaneTail keeps the *last* paneLimit runes instead of the first.
+// Used for content whose newest output is at the end (log tails, event feeds):
+// when something must give, it is the older head of the output, not the lines
+// the user most likely wants.
+func truncateForPaneTail(s string) string {
+	if len(s) <= paneLimit {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= paneLimit {
+		return s
+	}
+	cut := string(runes[len(runes)-paneLimit:])
+	if nl := strings.Index(cut, "\n"); nl > 0 && nl < paneLimit/2 {
+		cut = cut[nl+1:]
+	}
+	return "… earlier output truncated to fit one message.\n\n" + cut
+}
+
 // verbPane wraps the output of a detail-pane verb: the body it produced, plus a
 // keyboard that leads back to the resource it was invoked on.
 //
@@ -100,6 +128,16 @@ func (b *Bot) verbPane(r detailReq, rich, fallback string) pane {
 // showVerbResult renders a verb's output into the pane, with a route back.
 func (b *Bot) showVerbResult(ctx context.Context, r detailReq, rich, fallback string) {
 	b.showPane(ctx, r.chatID, r.messageID, b.verbPane(r, rich, fallback))
+}
+
+// showLogResult renders log output into the pane. Logs differ from other verb
+// output in one critical way: the newest lines are at the end, so when the
+// pane must truncate to fit one message, it is the old head that gets cut —
+// never the tail the user asked for.
+func (b *Bot) showLogResult(ctx context.Context, r detailReq, rich, fallback string) {
+	p := b.verbPane(r, rich, fallback)
+	p.keepTail = true
+	b.showPane(ctx, r.chatID, r.messageID, p)
 }
 
 // reportPaneError renders a failure into the pane instead of sending it.
