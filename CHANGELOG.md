@@ -39,6 +39,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - golangci-lint v2 configuration format
 - gofmt issues on 3 files
 
+## [v0.1.0-beta.0] - 2026-08-05
+
+First beta: feature-complete CLI/menu surface with per-user RBAC via
+impersonation. Promoted from alpha per maintainer decision — the mutating
+actions are now RBAC-enforced end to end.
+
+### Fixed
+- **Rich tables**: KeyValue field names now render as real bold. The
+  `**marker**` was double-escaped by the table cell escaping pass
+  (`**Kind**` → `\*\*Kind\*\*`), so it rendered as literal asterisks.
+  Bold markers are now preserved through escaping; cells are escaped
+  exactly once.
+- **Log truncation kept the wrong end**: when a log body exceeded the
+  single-message pane limit, the pane truncated from the *head*, silently
+  discarding the newest lines the user asked for. Log panes now truncate
+  from the *tail* (old output cut, newest lines kept).
+- **Log tail requests were overridden**: `/logs`, `/logs -f` and the menu
+  log buttons hardcoded a 100/200-line cap via `FormatPodLogs`, so a
+  `--tail 500` request was silently cut to 100. The formatter now only
+  caps when no `--tail` is given (the API server limits the fetch when
+  one is).
+
+### Security Notes
+- Permissions are **not hardcoded** in the bot. Each Telegram user maps to a
+  k8s identity (user + groups); the bot acts as that identity and Kubernetes
+  RBAC enforces the role. To grant/revoke access, change the ClusterRole /
+  RoleBinding — no code change or redeploy required.
+
 ## [v0.1.0-alpha.2] - 2026-08-05
 
 ### Fixed
