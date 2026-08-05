@@ -39,6 +39,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - golangci-lint v2 configuration format
 - gofmt issues on 3 files
 
+## [v0.1.0-alpha.2] - 2026-08-05
+
+### Fixed
+- **Security**: All bot actions (scale, delete, restart, drain, cordon,
+  logs, describe, list) now run through the per-user **impersonated** k8s
+  client instead of the bot's base client. Previously the menu-driven
+  mutations used the base client (which holds the chart's broad ClusterRole),
+  so a read-only mapped user could scale/delete regardless of their RBAC
+  role. Now the API server's RBAC decides allow/deny based on the identity
+  each Telegram user is mapped to.
+- **RBAC**: The chart's `readonly-user` ClusterRole is now bound to the
+  `viewers` **group** (the identity read-only users are impersonated as).
+  Role changes take effect without touching the bot.
+- **Docker build**: The multi-stage Dockerfile hardcoded `GOARCH=amd64`, so
+  the `linux/arm64` image shipped an amd64 binary. It now uses the `TARGETARCH`
+  build arg so each platform image contains the correct binary, and QEMU is
+  registered in CI so arm64 build stages can run on the amd64 runner.
+- **Audit logging**: Every user action (delete, restart, scale, exec) logs
+  `telegram_user_id` plus resource details, and impersonated-client selection
+  is logged at Info level, so logs show *who is doing what*.
+
+### Security Notes
+- Permissions are **not hardcoded** in the bot. Each Telegram user maps to a
+  k8s identity (user + groups); the bot acts as that identity and Kubernetes
+  RBAC enforces the role. To grant/revoke access, change the ClusterRole /
+  RoleBinding — no code change or redeploy required.
+
 ## [v0.1.0-alpha.1] - 2026-08-05
 
 ### Added

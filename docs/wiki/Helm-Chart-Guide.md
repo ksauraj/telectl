@@ -87,6 +87,18 @@ rbac:
 
 When enabled, the bot impersonates different K8s users based on Telegram user ID.
 
+> **Design assumption (important):** the bot does **not** hardcode any
+> permission logic. Each Telegram user is mapped to a Kubernetes identity
+> (user + groups) in the config; the bot then acts *as that identity* for
+> **every** action, and **Kubernetes RBAC decides** whether the request
+> succeeds or is rejected with `Forbidden`. This means:
+>
+> - Granting/revoking a user's access = editing the ClusterRole / RoleBinding
+>   that their impersonated identity is bound to. No code change, no redeploy.
+> - Read-only users will get errors like `User "readonly-user" cannot patch
+>   resource "deployments/scale"` when they try to scale or delete — that is
+>   the API server enforcing RBAC, not a bot-level check.
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `impersonation.enabled` | Enable impersonation feature | `false` |
