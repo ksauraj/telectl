@@ -70,7 +70,6 @@ linters:
 
     goconst:
       min-occurrences: 3
-      ignore-tests: true
 
     lll:
       line-length: 120
@@ -85,7 +84,3 @@ linters:
           disabled: false
         - name: package-comments
           disabled: false
-
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
