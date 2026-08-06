@@ -30,6 +30,7 @@ flowchart LR
 - [Monitoring](Monitoring) — top, events, watch
 
 ### Deployment
+- [Try It Locally](Try-It-Locally) — kind, minikube, k3d, k3s, MicroK8s
 - [Helm Chart Guide](Helm-Chart-Guide) — full Helm reference + RBAC + impersonation
 - [Docker Deployment](Docker-Deployment) — running with Docker
 - [Two Deployment Modes](Two-Deployment-Modes) — Helm pod vs normal user
