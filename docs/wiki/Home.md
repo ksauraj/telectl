@@ -17,6 +17,7 @@ Welcome to the telectl wiki! This is the central documentation hub for the proje
 - [Monitoring](Monitoring) - Top, events, watch commands
 
 ### Deployment
+- [Try It Locally](Try-It-Locally) - Quick start on kind, minikube, k3d, k3s, MicroK8s
 - [Helm Chart Guide](Helm-Chart-Guide) - Complete Helm deployment guide
 - [Docker Deployment](Docker-Deployment) - Running with Docker
 - [Kubernetes RBAC](Kubernetes-RBAC) - Setting up permissions
