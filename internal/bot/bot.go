@@ -455,7 +455,7 @@ func (b *Bot) dispatchMonitorCallback(
 	switch action.Action {
 	case menus.VerbHome:
 		kb := b.menuBuilder.GetMonitorInlineKeyboard()
-		b.editView(ctx, chatID, messageID, "<b>Monitoring</b>\n\nPick a view.", &kb)
+		b.editView(ctx, chatID, messageID, b.monitorMenuText(), &kb)
 	case "top":
 		resType := action.ResourceType
 		if resType == "" {
@@ -539,7 +539,7 @@ func (b *Bot) dispatchOpsCallback(
 	switch action.Action {
 	case menus.VerbHome:
 		kb := b.menuBuilder.GetOperationsInlineKeyboard()
-		b.editView(ctx, chatID, messageID, "<b>Operations</b>\n\nPick an operation.", &kb)
+		b.editView(ctx, chatID, messageID, b.operationsMenuText(), &kb)
 	case "restart":
 		b.showSectionUsage(ctx, chatID, messageID, menus.SectionOperations, "Restart a deployment",
 			"/restart deployment <name> [-n namespace]", "")
@@ -811,7 +811,7 @@ func (b *Bot) dispatchSettingsCallback(
 	switch action.Action {
 	case menus.VerbHome:
 		kb := b.menuBuilder.GetSettingsInlineKeyboard()
-		text := fmt.Sprintf("<b>Settings</b>\n\n<b>Context:</b> %s\n<b>Namespace:</b> %s",
+		text := fmt.Sprintf("<b>Settings</b>\n\n<b>Context:</b> %s\n<b>Namespace:</b> %s\n\nSwitch cluster context, default namespace, and other preferences.\nPick a setting below.",
 			formatters.EscapeHTML(b.currentContextName(session)),
 			formatters.EscapeHTML(nsDisplay(session.GetNamespace())))
 		b.editView(ctx, chatID, messageID, text, &kb)
@@ -1102,8 +1102,8 @@ func (b *Bot) ShowMainMenu(ctx context.Context, chatID int64, session *types.Use
 func (b *Bot) ShowResourceTypes(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "resource_types"})
 	kb := b.menuBuilder.GetResourceTypeInlineKeyboard()
-	if _, err := b.tgBot.SendText(ctx, chatID,
-		"<b>Resources</b>\n\nPick a resource type to browse.", "HTML", &kb); err != nil {
+	text := "<b>Resources</b>\n\nBrowse pods, deployments, services, and more.\nPick a resource type below, or type /get <resource> directly."
+	if _, err := b.tgBot.SendText(ctx, chatID, text, "HTML", &kb); err != nil {
 		b.logger.Error("Failed to send resource types", zap.Error(err), zap.Int64("chat_id", chatID))
 	}
 }
@@ -1111,25 +1111,50 @@ func (b *Bot) ShowResourceTypes(ctx context.Context, chatID int64, session *type
 func (b *Bot) ShowMonitor(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "monitor"})
 	kb := b.menuBuilder.GetMonitorInlineKeyboard()
-	if _, err := b.tgBot.SendText(ctx, chatID, "<b>Monitoring</b>\n\nPick a view.", "HTML", &kb); err != nil {
+	if _, err := b.tgBot.SendText(ctx, chatID, b.monitorMenuText(), "HTML", &kb); err != nil {
 		b.logger.Error("Failed to send monitor", zap.Error(err), zap.Int64("chat_id", chatID))
 	}
+}
+
+// monitorMenuText is the body under the Monitor keyboard. It is deliberately a
+// few lines long: Telegram sizes an inline keyboard to its carrying message,
+// so a one-line body renders the buttons narrow (the /start menu showed the
+// same artifact until it carried the full menu text). The wider body keeps the
+// Monitor buttons full-width on first render.
+func (b *Bot) monitorMenuText() string {
+	return `<b>Monitoring</b>
+
+Resource usage and cluster activity.
+Choose a view below, or type /top, /events, or /watch directly.`
 }
 
 func (b *Bot) ShowOperations(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "operations"})
 	kb := b.menuBuilder.GetOperationsInlineKeyboard()
-	if _, err := b.tgBot.SendText(ctx, chatID, "<b>Operations</b>\n\nPick an operation.", "HTML", &kb); err != nil {
+	if _, err := b.tgBot.SendText(ctx, chatID, b.operationsMenuText(), "HTML", &kb); err != nil {
 		b.logger.Error("Failed to send operations", zap.Error(err), zap.Int64("chat_id", chatID))
 	}
+}
+
+// operationsMenuText keeps the Operations pane wide on first render; see
+// monitorMenuText for why the body is a fuller paragraph.
+func (b *Bot) operationsMenuText() string {
+	return `<b>Operations</b>
+
+Restart, scale, and other workload actions.
+Pick an operation below, or run the equivalent command directly.`
 }
 
 func (b *Bot) ShowSettings(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "settings"})
 	kb := b.menuBuilder.GetSettingsInlineKeyboard()
-	text := fmt.Sprintf("<b>Settings</b>\n\n<b>Context:</b> %s\n<b>Namespace:</b> %s",
-		formatters.EscapeHTML(b.currentContextName(session)),
-		formatters.EscapeHTML(session.GetNamespace()))
+	text := `<b>Settings</b>
+
+<b>Context:</b> ` + formatters.EscapeHTML(b.currentContextName(session)) + `
+<b>Namespace:</b> ` + formatters.EscapeHTML(session.GetNamespace()) + `
+
+Switch cluster context, default namespace, and other preferences.
+Pick a setting below.`
 	if _, err := b.tgBot.SendText(ctx, chatID, text, "HTML", &kb); err != nil {
 		b.logger.Error("Failed to send settings", zap.Error(err), zap.Int64("chat_id", chatID))
 	}

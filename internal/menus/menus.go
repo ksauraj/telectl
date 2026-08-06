@@ -117,11 +117,11 @@ func (mb *MenuBuilder) GetMainReplyKeyboard() tg.ReplyKeyboardMarkup {
 			tg.KeyboardButtonText(LabelHelp),
 		),
 	)
-	// Full-width, not resized: resize_keyboard=true makes Telegram shrink the
-	// bar to the shortest label, so the menu renders narrow on the first /start
-	// and only widens after a button round-trip. Holding it full-width makes the
-	// layout consistent from the first render.
-	keyboard.ResizeKeyboard = false
+	// Resize to content height. resize_keyboard=false would make the bar take
+	// the full on-screen keyboard height on mobile (excess padding around the
+	// buttons); shrinking it keeps the compact layout. Note: this affects
+	// height only — Telegram reply keyboards always span the full width.
+	keyboard.ResizeKeyboard = true
 	keyboard.OneTimeKeyboard = false
 	keyboard.InputFieldPlaceholder = "Choose an action or type a command..."
 	return keyboard
