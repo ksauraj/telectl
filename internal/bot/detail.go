@@ -129,6 +129,7 @@ var detailVerbs = map[string]func(*Bot, context.Context, detailReq){
 	cmdLogs:        (*Bot).detailPodLogs,
 	"logsfollow":   (*Bot).showFollowLogs,
 	"logsprevious": (*Bot).showPreviousLogs,
+	"logsfull":     (*Bot).showFullLog,
 	"nsresources":  (*Bot).showNamespaceSummary,
 	"help":         (*Bot).showResourceHelp,
 }
@@ -674,6 +675,37 @@ func (b *Bot) showPreviousLogs(ctx context.Context, r detailReq) {
 	b.showLogResult(ctx, r,
 		formatters.RichLogs(r.ns+"/"+r.name+" (previous)", r.container, logs),
 		"Previous logs for "+formatters.EscapeHTML(r.name))
+}
+
+// showFullLogs sends the entire log tail as a fresh message, not the pane.
+//
+// The pane truncates long bodies to fit a single message; for a log tail that
+// can mean the detail view shows a slice even when the user asked for a full
+// container. "Full log" bypasses the pane cap and posts the whole requested
+// tail as its own message (split if it exceeds Telegram's 4096-char limit),
+// so nothing the API server returned is hidden.
+func (b *Bot) showFullLog(ctx context.Context, r detailReq) {
+	if r.name == "" {
+		return
+	}
+	opts := k8s.PodLogOptions{Namespace: r.ns, PodName: r.name, Container: r.container}
+	if r.extra != "" {
+		if n, err := strconv.ParseInt(r.extra, 10, 64); err == nil && n > 0 {
+			opts.TailLines = types.Int64Ptr(n)
+		}
+	}
+	logs, err := b.fetchLogs(ctx, opts, r.session)
+	if err != nil {
+		b.reportPaneError(ctx, r, "read full logs", err)
+		return
+	}
+
+	label := r.ns + "/" + r.name
+	if r.container != "" {
+		label += " · " + r.container
+	}
+	b.SendRich(r.chatID, formatters.RichLogs(label, r.container, logs),
+		"Logs for "+formatters.EscapeHTML(label))
 }
 
 func (b *Bot) fetchLogs(ctx context.Context, opts k8s.PodLogOptions, session *types.UserSession) (string, error) {

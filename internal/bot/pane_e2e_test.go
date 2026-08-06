@@ -292,3 +292,27 @@ func TestTruncateForPaneKeepsValidUTF8(t *testing.T) {
 		t.Errorf("short body was altered: %q", got)
 	}
 }
+
+// truncateForPaneTail must keep log/event-style content renderable as a code
+// block. RichLogs wraps the tail in a fenced ``` block; when the tail is long
+// the kept slice can drop the opening fence, which would make Telegram render
+// the body as plain text instead of code. The helper must re-open (or re-close)
+// the fence so the truncated body is still one balanced code block.
+func TestTruncateForPaneTailRepairsFence(t *testing.T) {
+	body := "## Logs: default/api-1\n\n```log\n" + strings.Repeat("line of log output\n", 2000) + "```\n"
+	got := truncateForPaneTail(body)
+	if !strings.HasPrefix(got, "…") {
+		t.Errorf("truncated body should start with the note, got %q", got[:min(20, len(got))])
+	}
+	if n := strings.Count(got, "```"); n != 2 {
+		t.Errorf("truncated log tail has %d fences, want exactly 2 (one pair); body:\n%s", n, got)
+	}
+	if !strings.HasPrefix(got, "… earlier output truncated to fit one message.\n\n```log\n") {
+		t.Errorf("truncated log tail did not re-open the log fence; got:\n%s", got)
+	}
+	// It must also respect the length budget.
+	if len([]rune(got)) > paneLimit+64 {
+		t.Errorf("truncated body is %d runes, want <= %d", len([]rune(got)), paneLimit+64)
+	}
+}
+

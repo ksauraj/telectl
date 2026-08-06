@@ -99,6 +99,12 @@ func truncateForPane(s string) string {
 // Used for content whose newest output is at the end (log tails, event feeds):
 // when something must give, it is the older head of the output, not the lines
 // the user most likely wants.
+//
+// It repairs an opening code fence if one was cut: a log body rendered by
+// formatters.RichLogs is a fenced ``` block, and slicing on a line boundary
+// can drop the opening fence line. That would make Telegram render the tail as
+// plain text instead of a code block. The fence language is read from the
+// first "```" in the original body, so the trimmed tail re-opens a valid block.
 func truncateForPaneTail(s string) string {
 	if len(s) <= paneLimit {
 		return s
@@ -111,7 +117,44 @@ func truncateForPaneTail(s string) string {
 	if nl := strings.Index(cut, "\n"); nl > 0 && nl < paneLimit/2 {
 		cut = cut[nl+1:]
 	}
+
+	// Re-open / re-close the code fence so the trimmed tail is still a valid
+	// fenced block. Slicing on a line boundary can drop the opening fence
+	// (which lives at the head, far from this tail); an unclosed block renders
+	// as plain text instead of a code block.
+	if lang, ok := openingFence(s); ok {
+		if strings.HasPrefix(cut, "```") {
+			// Opening fence survived: ensure a closing fence balances it.
+			if strings.Count(cut, "```")%2 != 0 {
+				cut = strings.TrimRight(cut, "\n") + "\n```\n"
+			}
+		} else if !strings.Contains(cut, "```") {
+			// Neither fence survived: re-open with the block's language.
+			cut = "```" + lang + "\n" + cut + "\n```\n"
+		} else {
+			// Only the closing fence survived (odd fence count): put the
+			// opening back so the kept tail is a balanced, self-contained
+			// code block and the dangling closing fence is not left orphaned.
+			cut = "```" + lang + "\n" + strings.TrimRight(cut, "\n") + "\n"
+		}
+	}
 	return "… earlier output truncated to fit one message.\n\n" + cut
+}
+
+// openingFence reports the language tag of the body's fenced code block, if
+// any. The body may carry a heading paragraph above the code block, so the
+// opening fence is searched for rather than required at position zero. It
+// returns ("", false) for content that has no code fence.
+func openingFence(s string) (string, bool) {
+	i := strings.Index(s, "```")
+	if i < 0 {
+		return "", false
+	}
+	rest := s[i+3:]
+	if nl := strings.Index(rest, "\n"); nl >= 0 {
+		return rest[:nl], true
+	}
+	return rest, true
 }
 
 // verbPane wraps the output of a detail-pane verb: the body it produced, plus a

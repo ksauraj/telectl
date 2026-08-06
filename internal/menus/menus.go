@@ -117,6 +117,10 @@ func (mb *MenuBuilder) GetMainReplyKeyboard() tg.ReplyKeyboardMarkup {
 			tg.KeyboardButtonText(LabelHelp),
 		),
 	)
+	// Resize to content height. resize_keyboard=false would make the bar take
+	// the full on-screen keyboard height on mobile (excess padding around the
+	// buttons); shrinking it keeps the compact layout. Note: this affects
+	// height only — Telegram reply keyboards always span the full width.
 	keyboard.ResizeKeyboard = true
 	keyboard.OneTimeKeyboard = false
 	keyboard.InputFieldPlaceholder = "Choose an action or type a command..."
@@ -788,6 +792,9 @@ func (mb *MenuBuilder) GetLogOptionsKeyboard(namespace, name, container string) 
 		tg.InlineKeyboardRow(
 			mb.btn(f.Btn(f.GlyphAction, "Follow"), actionData("logsfollow", "pods", namespace, name, container)),
 			mb.btn(f.Btn(f.GlyphAction, "Previous"), actionData("logsprevious", "pods", namespace, name, container)),
+		),
+		tg.InlineKeyboardRow(
+			mb.btn(f.Btn(f.GlyphAction, "Full log"), actionData("logsfull", "pods", namespace, name, container)),
 		),
 		tg.InlineKeyboardRow(
 			mb.btn(f.Btn(f.GlyphBack, "Back"), "menu:resource:view:pods:"+namespace+":"+name),
