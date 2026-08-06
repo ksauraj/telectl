@@ -117,7 +117,11 @@ func (mb *MenuBuilder) GetMainReplyKeyboard() tg.ReplyKeyboardMarkup {
 			tg.KeyboardButtonText(LabelHelp),
 		),
 	)
-	keyboard.ResizeKeyboard = true
+	// Full-width, not resized: resize_keyboard=true makes Telegram shrink the
+	// bar to the shortest label, so the menu renders narrow on the first /start
+	// and only widens after a button round-trip. Holding it full-width makes the
+	// layout consistent from the first render.
+	keyboard.ResizeKeyboard = false
 	keyboard.OneTimeKeyboard = false
 	keyboard.InputFieldPlaceholder = "Choose an action or type a command..."
 	return keyboard
@@ -788,6 +792,9 @@ func (mb *MenuBuilder) GetLogOptionsKeyboard(namespace, name, container string) 
 		tg.InlineKeyboardRow(
 			mb.btn(f.Btn(f.GlyphAction, "Follow"), actionData("logsfollow", "pods", namespace, name, container)),
 			mb.btn(f.Btn(f.GlyphAction, "Previous"), actionData("logsprevious", "pods", namespace, name, container)),
+		),
+		tg.InlineKeyboardRow(
+			mb.btn(f.Btn(f.GlyphAction, "Full log"), actionData("logsfull", "pods", namespace, name, container)),
 		),
 		tg.InlineKeyboardRow(
 			mb.btn(f.Btn(f.GlyphBack, "Back"), "menu:resource:view:pods:"+namespace+":"+name),

@@ -1084,7 +1084,11 @@ func (b *Bot) ShowMainMenu(ctx context.Context, chatID int64, session *types.Use
 			b.logger.Error("Failed to send main menu keyboard", zap.Error(err), zap.Int64("chat_id", chatID))
 		}
 		kb := b.menuBuilder.GetMainMenuInlineKeyboard()
-		if _, err := b.tgBot.SendText(ctx, chatID, "Choose a section:", "HTML", &kb); err != nil {
+		// Use the full menu text, not a one-liner: Telegram sizes an inline
+		// keyboard to the message that carries it, so a short body renders the
+		// buttons narrow on the first /start and only widens once it is edited.
+		// Sending the same body the edit path uses makes the first render match.
+		if _, err := b.tgBot.SendText(ctx, chatID, b.mainMenuText(session), "HTML", &kb); err != nil {
 			b.logger.Error("Failed to send main menu", zap.Error(err), zap.Int64("chat_id", chatID))
 		}
 		return
