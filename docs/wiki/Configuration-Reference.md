@@ -59,6 +59,36 @@ CLI flags outrank config file and environment (see
 | `webhook_url` | string | `""` | **Read but unused** — webhook mode is not implemented; the bot uses long polling. |
 | `webhook_port` | int | `8443` | **Read but unused** — same as above. |
 
+### Why the example config has two user IDs
+
+The sample configs in this wiki (Try It Locally, the manual test runbook)
+list **two** Telegram user IDs deliberately, because they demonstrate the two
+kinds of user the bot supports out of the box:
+
+| Placeholder | Role | Impersonated as |
+|-------------|------|-----------------|
+| `YOUR_ADMIN_TELEGRAM_ID` | full access | `admin-user` + `system:masters` (cluster-admin) |
+| `YOUR_READONLY_TELEGRAM_ID` | read-only | `readonly-user` + `viewers` (get/list/watch only) |
+
+Having both in one config is how you see RBAC working end-to-end: one user
+can scale and delete, the other gets `Forbidden` on the same commands. It's a
+*teaching setup*, not a requirement.
+
+### Using just one ID
+
+You don't need two IDs. If you only want one person (or one kind of access):
+
+- **Single admin**: put your ID in `allowed_user_ids`, keep it in
+  `adminUserIds`, and in `userMapping` map it to `admin-user`. Delete the
+  read-only mapping (or leave it — unused mappings are harmless).
+- **Single read-only user**: put your ID in `allowed_user_ids`, map it to
+  `readonly-user` + `viewers`, and leave `adminUserIds` empty.
+
+The mapping table maps each *listed* ID to an identity; IDs not listed in
+`userMapping` fall back to `impersonation.defaultUser` / `defaultGroups`.
+Keep every ID in `allowed_user_ids` **quoted** — unquoted, YAML renders
+large numbers in scientific notation and the mapping silently breaks.
+
 ## `kubernetes`
 
 | Key | Type | Default | Description |
