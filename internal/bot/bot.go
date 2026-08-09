@@ -42,9 +42,12 @@ type Bot struct {
 	userSessions sync.Map
 	menuBuilder  *menus.MenuBuilder
 	cancelFunc   context.CancelFunc
+	buildVersion string
+	buildCommit  string
+	buildDate    string
 }
 
-func New(cfg *config.Config, logger *zap.Logger) (*Bot, error) {
+func New(cfg *config.Config, logger *zap.Logger, version, commit, date string) (*Bot, error) {
 	if err := config.ValidateConfig(cfg); err != nil {
 		return nil, err
 	}
@@ -72,22 +75,25 @@ func New(cfg *config.Config, logger *zap.Logger) (*Bot, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	version, err := k8sClient.GetServerVersion(ctx)
+	k8sVersion, err := k8sClient.GetServerVersion(ctx)
 	if err != nil {
 		logger.Warn("Failed to connect to Kubernetes API", zap.Error(err))
 	} else {
-		logger.Info("Connected to Kubernetes", zap.String("version", version))
+		logger.Info("Connected to Kubernetes", zap.String("version", k8sVersion))
 	}
 
 	b := &Bot{
-		tgBot:       tgBot,
-		libBot:      libBot,
-		config:      cfg,
-		k8sClient:   k8sClient,
-		logger:      logger,
-		handlers:    make(map[string]handlers.CommandHandler),
-		rateLimiter: types.NewRateLimiter(cfg.Bot.RateLimit, time.Minute),
-		menuBuilder: menus.NewMenuBuilder(cfg),
+		tgBot:        tgBot,
+		libBot:       libBot,
+		config:       cfg,
+		k8sClient:    k8sClient,
+		logger:       logger,
+		handlers:     make(map[string]handlers.CommandHandler),
+		rateLimiter:  types.NewRateLimiter(cfg.Bot.RateLimit, time.Minute),
+		menuBuilder:  menus.NewMenuBuilder(cfg),
+		buildVersion: version,
+		buildCommit:  commit,
+		buildDate:    date,
 	}
 	b.registerHandlers()
 	return b, nil
@@ -362,8 +368,8 @@ func (b *Bot) dispatchCallback(
 	case "main":
 		b.editToMainMenu(ctx, chatID, messageID, session)
 
-	case cmdHelp:
-		b.showHelpPane(ctx, chatID, messageID)
+	case "help":
+		b.dispatchHelpCallback(ctx, chatID, messageID, action)
 
 	case "resource":
 		b.dispatchResourceCallback(ctx, chatID, messageID, action, session)
@@ -825,6 +831,93 @@ func (b *Bot) dispatchSettingsCallback(
 	}
 }
 
+// dispatchHelpCallback handles the "menu:help:*" family.
+func (b *Bot) dispatchHelpCallback(
+	ctx context.Context,
+	chatID int64,
+	messageID int,
+	action *menus.CallbackAction,
+) {
+	switch action.Action {
+	case "resources":
+		b.showHelpSection(ctx, chatID, messageID, "Resources",
+			`<b>Resource Commands</b>
+
+/get <type> [name] [-n ns] [-o wide] - List or get a resource
+/describe <type> <name> [-n ns] - Detailed view
+
+<b>Types:</b> pods, deployments, services, replicasets, namespaces, nodes, configmaps, secrets, pvcs, pvs, ingresses, events`)
+
+	case "workloads":
+		b.showHelpSection(ctx, chatID, messageID, "Workloads",
+			`<b>Workload Commands</b>
+
+/restart <deployment> [-n ns] - Rollout restart
+/scale <deployment> <replicas> [-n ns] - Scale
+/top pods [-n ns] - Resource usage
+/watch <type> [-n ns] - Watch for changes
+/events [-n ns] - Cluster events`)
+
+	case "networking":
+		b.showHelpSection(ctx, chatID, messageID, "Networking",
+			`<b>Networking Commands</b>
+
+/portforward <pod> <local:remote> [-n ns] - Port forward
+/exec <pod> [-c container] -n ns -- <cmd> - Execute in pod
+/logs <pod> [-c container] [-n ns] [-f] [--tail N] - Pod logs`)
+
+	case "storage":
+		b.showHelpSection(ctx, chatID, messageID, "Storage",
+			`<b>Storage Commands</b>
+
+/get pvc [-n ns] - PersistentVolumeClaims
+/get pv - PersistentVolumes
+/get cm [-n ns] - ConfigMaps
+/get secret [-n ns] - Secrets (use Describe + Decoded button)`)
+
+	case "monitoring":
+		b.showHelpSection(ctx, chatID, messageID, "Monitoring",
+			`<b>Monitoring Commands</b>
+
+/top pods [-n ns] - Pod CPU/memory
+/top nodes - Node CPU/memory
+/events [-n ns] - Recent events
+/watch <type> [-n ns] - Watch resource changes`)
+
+	case "operations":
+		b.showHelpSection(ctx, chatID, messageID, "Operations",
+			`<b>Operations Commands</b>
+
+/restart <deployment> [-n ns] - Rollout restart
+/scale <deployment> <replicas> [-n ns] - Scale replicas
+/edit <type> <name> [-n ns] - Edit live YAML
+/delete <type> <name> [-n ns] - Delete resource`)
+
+	case "settings":
+		b.showHelpSection(ctx, chatID, messageID, "Settings",
+			`<b>Settings Commands</b>
+
+/contexts - List kubeconfig contexts
+/use-context <name> - Switch context
+/config - Show current configuration
+/settings - Open settings panel`)
+
+	case "all":
+		b.showHelpSection(ctx, chatID, messageID, "All Commands", formatters.HelpText)
+
+	default:
+		// Empty action (from main menu Help button) shows full reference
+		b.showHelpSection(ctx, chatID, messageID, "All Commands", formatters.HelpText)
+	}
+}
+
+// showHelpSection renders a help category into the pane.
+func (b *Bot) showHelpSection(ctx context.Context, chatID int64, messageID int, title, body string) {
+	kb := b.menuBuilder.GetHelpInlineKeyboard()
+	text := fmt.Sprintf("<b>%s</b>\n\n%s", formatters.EscapeHTML(title), body)
+	b.editView(ctx, chatID, messageID, text, &kb)
+}
+
 // showContextPicker lists kubeconfig contexts as buttons, in the pane.
 func (b *Bot) showContextPicker(ctx context.Context, chatID int64, messageID int) {
 	kc := b.k8sClient.GetKubeconfig()
@@ -1054,6 +1147,9 @@ func (b *Bot) currentContextName(session *types.UserSession) string {
 		if kc := b.k8sClient.GetCurrentContext(); kc != nil && kc.Name != "" {
 			return kc.Name
 		}
+	}
+	if b.config != nil && b.config.Kubernetes.ClusterName != "" {
+		return b.config.Kubernetes.ClusterName
 	}
 	return "unknown"
 }
@@ -1349,3 +1445,7 @@ func (b *Bot) GetAPI() interface{}         { return b.libBot }
 func (b *Bot) GetMenuBuilder() interface{} { return b.menuBuilder }
 func (b *Bot) GetLogger() interface{}      { return b.logger }
 func (b *Bot) GetRateLimiter() interface{} { return b.rateLimiter }
+
+func (b *Bot) BuildVersion() string { return b.buildVersion }
+func (b *Bot) BuildCommit() string  { return b.buildCommit }
+func (b *Bot) BuildDate() string    { return b.buildDate }
