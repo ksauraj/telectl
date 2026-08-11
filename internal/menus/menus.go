@@ -686,6 +686,31 @@ func (mb *MenuBuilder) GetMainMenuInlineKeyboard() tg.InlineKeyboardMarkup {
 	)
 }
 
+// GetHelpInlineKeyboard returns the help categories inline keyboard.
+func (mb *MenuBuilder) GetHelpInlineKeyboard() tg.InlineKeyboardMarkup {
+	return tg.InlineKeyboard(
+		tg.InlineKeyboardRow(
+			mb.btn(f.Btn(f.GlyphAction, "Resources"), "menu:help:resources"),
+			mb.btn(f.Btn(f.GlyphAction, "Workloads"), "menu:help:workloads"),
+		),
+		tg.InlineKeyboardRow(
+			mb.btn(f.Btn(f.GlyphAction, "Networking"), "menu:help:networking"),
+			mb.btn(f.Btn(f.GlyphAction, "Storage"), "menu:help:storage"),
+		),
+		tg.InlineKeyboardRow(
+			mb.btn(f.Btn(f.GlyphAction, "Monitoring"), "menu:help:monitoring"),
+			mb.btn(f.Btn(f.GlyphAction, "Operations"), "menu:help:operations"),
+		),
+		tg.InlineKeyboardRow(
+			mb.btn(f.Btn(f.GlyphAction, "Settings"), "menu:help:settings"),
+			mb.btn(f.Btn(f.GlyphAction, "All Commands"), "menu:help:all"),
+		),
+		tg.InlineKeyboardRow(
+			mb.btn(f.Btn(f.GlyphHome, "Main"), "menu:main"),
+		),
+	)
+}
+
 // GetMonitorInlineKeyboard returns inline keyboard for monitoring.
 func (mb *MenuBuilder) GetMonitorInlineKeyboard() tg.InlineKeyboardMarkup {
 	return tg.InlineKeyboard(
@@ -886,7 +911,9 @@ var callbackFields = map[string][]func(*CallbackAction, string){
 	// from a known one that takes no fields.
 	"main": {},
 	"noop": {},
-	"help": {},
+	"help": {
+		func(a *CallbackAction, v string) { a.Action = v }, // resources, workloads, networking, storage, monitoring, operations, settings, all
+	},
 }
 
 // tailJoinTypes are the callback types whose final field is a name that may
