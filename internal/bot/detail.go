@@ -2,10 +2,12 @@ package bot
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ksauraj/telectl/internal/k8s"
 	"github.com/ksauraj/telectl/internal/menus"
@@ -106,32 +108,34 @@ type detailReq struct {
 // "That action is not available yet" replies used to be — a button with no
 // handler, indistinguishable from a bug until someone tapped it.
 var detailVerbs = map[string]func(*Bot, context.Context, detailReq){
-	"describe":     (*Bot).detailDescribe,
-	"labels":       (*Bot).showLabels,
-	"events":       (*Bot).showObjectEvents,
-	"selector":     (*Bot).showSelector,
-	"endpoints":    (*Bot).showEndpoints,
-	"pods":         (*Bot).showWorkloadPods,
-	"rspods":       (*Bot).showWorkloadPods,
-	"nodepods":     (*Bot).showNodePods,
-	"top":          (*Bot).showNodeTop,
-	"history":      (*Bot).showRolloutHistory,
-	"edit":         (*Bot).showManifest,
-	"cordon":       func(b *Bot, ctx context.Context, r detailReq) { b.setNodeSchedulable(ctx, r, false) },
-	"uncordon":     func(b *Bot, ctx context.Context, r detailReq) { b.setNodeSchedulable(ctx, r, true) },
-	"drain":        (*Bot).confirmDrain,
-	"confirmdrain": (*Bot).drainNode,
-	"scale":        (*Bot).showScaleOptions,
-	"rsscale":      (*Bot).showScaleOptions,
-	"scaleset":     (*Bot).applyScale,
-	"scalecustom":  (*Bot).promptCustomScale,
-	"logsopts":     (*Bot).showLogOptions,
-	cmdLogs:        (*Bot).detailPodLogs,
-	"logsfollow":   (*Bot).showFollowLogs,
-	"logsprevious": (*Bot).showPreviousLogs,
-	"logsfull":     (*Bot).showFullLog,
-	"nsresources":  (*Bot).showNamespaceSummary,
-	"help":         (*Bot).showResourceHelp,
+	"describe":       (*Bot).detailDescribe,
+	"labels":         (*Bot).showLabels,
+	"events":         (*Bot).showObjectEvents,
+	"selector":       (*Bot).showSelector,
+	"endpoints":      (*Bot).showEndpoints,
+	"pods":           (*Bot).showWorkloadPods,
+	"rspods":         (*Bot).showWorkloadPods,
+	"nodepods":       (*Bot).showNodePods,
+	"top":            (*Bot).showNodeTop,
+	"history":        (*Bot).showRolloutHistory,
+	"edit":           (*Bot).showManifest,
+	"cordon":         func(b *Bot, ctx context.Context, r detailReq) { b.setNodeSchedulable(ctx, r, false) },
+	"uncordon":       func(b *Bot, ctx context.Context, r detailReq) { b.setNodeSchedulable(ctx, r, true) },
+	"drain":          (*Bot).confirmDrain,
+	"confirmdrain":   (*Bot).drainNode,
+	"scale":          (*Bot).showScaleOptions,
+	"rsscale":        (*Bot).showScaleOptions,
+	"scaleset":       (*Bot).applyScale,
+	"scalecustom":    (*Bot).promptCustomScale,
+	"logsopts":       (*Bot).showLogOptions,
+	cmdLogs:          (*Bot).detailPodLogs,
+	"logsfollow":     (*Bot).showFollowLogs,
+	"logsfollowstop": (*Bot).showFollowLogsStop,
+	"logsprevious":   (*Bot).showPreviousLogs,
+	"logsfull":       (*Bot).showFullLog,
+	"nsresources":    (*Bot).showNamespaceSummary,
+	"help":           (*Bot).showResourceHelp,
+	"decoded":        (*Bot).detailDecodedSecret,
 }
 
 // dispatchDetailAction handles the verbs reachable from a detail pane. It
@@ -177,6 +181,54 @@ func (b *Bot) detailDescribe(ctx context.Context, r detailReq) {
 	b.showVerbResult(ctx, r,
 		formatters.RichResource(res, true),
 		formatters.FormatResource(res, "wide"))
+}
+
+// detailDecodedSecret fetches a secret and displays its decoded values.
+// Sensitive values are wrapped in Telegram spoiler text (||value||).
+func (b *Bot) detailDecodedSecret(ctx context.Context, r detailReq) {
+	if r.kind != "secrets" {
+		b.reportPaneError(ctx, r, "decode secret", fmt.Errorf("decoded action only available for secrets"))
+		return
+	}
+
+	res, err := b.getResource(ctx, r.kind, r.ns, r.name, r.session)
+	if err != nil {
+		b.reportPaneError(ctx, r, "get secret", err)
+		return
+	}
+
+	// Extract secret data from resource Details
+	dataMap, ok := res.Details["data"].(map[string]interface{})
+	if !ok {
+		b.showNotice(ctx, r, "No secret data", "This secret has no data field or it is empty.")
+		return
+	}
+
+	var lines []string
+	lines = append(lines, "<b>Decoded Secret: "+formatters.EscapeHTML(r.ns)+"/"+formatters.EscapeHTML(r.name)+"</b>\n")
+
+	for key, val := range dataMap {
+		strVal, ok := val.(string)
+		if !ok {
+			continue
+		}
+		// Decode base64
+		decoded, err := base64.StdEncoding.DecodeString(strVal)
+		if err != nil {
+			lines = append(lines, formatters.EscapeHTML(key)+": ||<i>decode error</i>||")
+			continue
+		}
+		decodedStr := string(decoded)
+		// Wrap in spoiler text
+		lines = append(lines, formatters.EscapeHTML(key)+": ||"+formatters.EscapeHTML(decodedStr)+"||")
+	}
+
+	if len(lines) == 1 {
+		lines = append(lines, "<i>No data keys found</i>")
+	}
+
+	text := strings.Join(lines, "\n")
+	b.showVerbResult(ctx, r, text, text)
 }
 
 // detailPodLogs serves the per-container and tail-size log buttons: Container

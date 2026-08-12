@@ -124,6 +124,8 @@ func TestEveryDetailHandlerIsReachable(t *testing.T) {
 		Details: map[string]interface{}{"spec": map[string]interface{}{"unschedulable": false}}}
 	cordoned := &k8s.ResourceInfo{Name: "node-1", Kind: "Node",
 		Details: map[string]interface{}{"spec": map[string]interface{}{"unschedulable": true}}}
+	secret := &k8s.ResourceInfo{Name: "my-secret", Namespace: "default", Kind: "Secret",
+		Details: map[string]interface{}{"data": map[string]interface{}{"key": "dmFsdWU="}}}
 
 	rendered := map[string]bool{}
 	for _, kb := range []tg.InlineKeyboardMarkup{
@@ -134,6 +136,7 @@ func TestEveryDetailHandlerIsReachable(t *testing.T) {
 		mb.GetResourceActionInlineKeyboard("nodes", "", "node-1", node),
 		mb.GetResourceActionInlineKeyboard("nodes", "", "node-1", cordoned),
 		mb.GetResourceActionInlineKeyboard("namespaces", "", "kube-system", nil),
+		mb.GetResourceActionInlineKeyboard("secrets", "default", "my-secret", secret),
 		mb.GetScaleKeyboard("deployments", "default", "api", 3),
 		mb.GetLogOptionsKeyboard("default", "api-1", "app"),
 	} {

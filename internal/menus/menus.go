@@ -474,6 +474,12 @@ func (mb *MenuBuilder) kindActionRows(
 			mb.btn(f.Btn(f.GlyphAction, "Forward"), act("portforward")),
 		))
 
+	case "secrets":
+		// Add Decoded button for secrets to view decoded values
+		rows = append(rows, tg.InlineKeyboardRow(
+			mb.btn(f.Btn(f.GlyphAction, "Decoded"), act("decoded")),
+		))
+
 	case "nodes":
 		rows = append(rows, tg.InlineKeyboardRow(
 			mb.btn(f.Btn(f.GlyphAction, "Top"), act("top")),
