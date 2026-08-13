@@ -691,24 +691,131 @@ func podContainers(pod *k8s.ResourceInfo) []string {
 	return out
 }
 
-// showFollowLogs fetches a large recent slice instead of streaming.
-//
-// A true follow would need a long-lived goroutine per user pushing edits into
-// the chat, and Telegram's rate limits make that a poor fit. Saying so is
-// better than a "Follow" button that quietly behaves like a one-shot fetch.
+// followLogState tracks a single live follow-logs operation.
+type followLogState struct {
+	cancel  context.CancelFunc
+	message int // messageID being edited
+}
+
+// showFollowLogs starts a live log follow: it edits the current pane to show
+// logs with a Stop button, then spawns a goroutine that re-fetches and edits
+// the same pane message every 5 seconds for up to 5 minutes (60 iterations).
 func (b *Bot) showFollowLogs(ctx context.Context, r detailReq) {
-	logs, err := b.fetchLogs(ctx, k8s.PodLogOptions{
-		Namespace: r.ns, PodName: r.name, Container: r.container,
-		TailLines: types.Int64Ptr(200),
-	}, r.session)
-	if err != nil {
-		b.reportPaneError(ctx, r, "read logs", err)
+	if r.name == "" || r.ns == "" {
 		return
 	}
-	rich := formatters.RichLogs(r.ns+"/"+r.name, r.container, logs) +
-		"\n\n> Live streaming is not available in chat. This is the last 200 " +
-		"lines — tap again for a fresh snapshot."
-	b.showLogResult(ctx, r, rich, "Last 200 lines of "+formatters.EscapeHTML(r.name))
+
+	// Create a cancellable context for this follow session.
+	followCtx, cancel := context.WithCancel(context.Background())
+
+	// Store the cancellation state in the session so the Stop button can find it.
+	stateKey := "followlog:" + r.ns + "/" + r.name + "/" + r.container
+	r.session.SetState(stateKey, &followLogState{cancel: cancel, message: r.messageID})
+
+	// Fetch initial snapshot.
+	opts := k8s.PodLogOptions{
+		Namespace: r.ns,
+		PodName:   r.name,
+		Container: r.container,
+		TailLines: types.Int64Ptr(200),
+	}
+	logs, err := b.fetchLogs(followCtx, opts, r.session)
+	if err != nil {
+		b.reportPaneError(ctx, r, "read logs", err)
+		cancel()
+		return
+	}
+
+	// Build Stop button keyboard.
+	stopData := "menu:action:logsfollowstop:pods:" + r.ns + ":" + r.name
+	if r.container != "" {
+		stopData += ":" + r.container
+	}
+	kb := tg.InlineKeyboard(
+		tg.InlineKeyboardRow(
+			tg.InlineButtonData("⏹ Stop", stopData),
+		),
+	)
+
+	label := r.ns + "/" + r.name
+	if r.container != "" {
+		label += " · " + r.container
+	}
+	rich := formatters.RichLogs(label, r.container, logs) +
+		"\n\n> Live follow active — updates every 5s for 5 min. Tap Stop to end."
+
+	// Edit the current pane in place with logs + Stop button.
+	b.editView(ctx, r.chatID, r.messageID, rich, &kb)
+
+	// Start the background updater.
+	go b.runFollowLogsUpdater(followCtx, r, stateKey)
+}
+
+// runFollowLogsUpdater fetches logs and edits the pane message every 5s for 5 min.
+func (b *Bot) runFollowLogsUpdater(ctx context.Context, r detailReq, stateKey string) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	iterations := 0
+	const maxIterations = 60 // 5 minutes / 5 seconds
+
+	for {
+		select {
+		case <-ctx.Done():
+			// Clean up session state.
+			r.session.DeleteState(stateKey)
+			return
+		case <-ticker.C:
+			iterations++
+			if iterations > maxIterations {
+				// Time's up — show final message in pane and clean up.
+				finalRich := formatters.RichLogs(r.ns+"/"+r.name, r.container, "") +
+					"\n\n> Live follow ended (5 min limit reached)."
+				b.editView(ctx, r.chatID, r.messageID, finalRich, nil)
+				r.session.DeleteState(stateKey)
+				return
+			}
+
+			// Fetch latest logs.
+			opts := k8s.PodLogOptions{
+				Namespace: r.ns,
+				PodName:   r.name,
+				Container: r.container,
+				TailLines: types.Int64Ptr(200),
+			}
+			logs, err := b.fetchLogs(ctx, opts, r.session)
+			if err != nil {
+				// Don't stop on transient fetch errors; just skip this iteration.
+				b.logger.Debug("Follow-logs fetch failed", zap.Error(err), zap.String("key", stateKey))
+				continue
+			}
+
+			label := r.ns + "/" + r.name
+			if r.container != "" {
+				label += " · " + r.container
+			}
+			rich := formatters.RichLogs(label, r.container, logs) +
+				"\n\n> Live follow active — updates every 5s for 5 min. Tap Stop to end."
+
+			// Edit the pane message.
+			b.editView(ctx, r.chatID, r.messageID, rich, nil)
+		}
+	}
+}
+
+// showFollowLogsStop handles the Stop button for live follow-logs.
+func (b *Bot) showFollowLogsStop(ctx context.Context, r detailReq) {
+	stateKey := "followlog:" + r.ns + "/" + r.name + "/" + r.container
+
+	if v, ok := r.session.GetState(stateKey); ok {
+		if s, ok := v.(*followLogState); ok && s.cancel != nil {
+			s.cancel()
+		}
+	}
+	r.session.DeleteState(stateKey)
+
+	// The background goroutine will clean up the message on context cancellation.
+	// The edit in the updater will show the "ended" message.
 }
 
 func (b *Bot) showPreviousLogs(ctx context.Context, r detailReq) {

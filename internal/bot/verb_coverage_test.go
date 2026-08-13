@@ -154,8 +154,10 @@ func TestEveryDetailHandlerIsReachable(t *testing.T) {
 	}
 
 	// Rendered only inside the drain confirmation prompt, built in confirmDrain.
+	// logsfollowstop is rendered dynamically by showFollowLogs.
 	exempt := map[string]string{
-		"confirmdrain": "rendered by confirmDrain's inline prompt",
+		"confirmdrain":   "rendered by confirmDrain's inline prompt",
+		"logsfollowstop": "rendered dynamically by showFollowLogs",
 	}
 
 	orphans := make([]string, 0, len(detailVerbs))

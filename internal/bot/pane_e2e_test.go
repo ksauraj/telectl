@@ -315,4 +315,3 @@ func TestTruncateForPaneTailRepairsFence(t *testing.T) {
 		t.Errorf("truncated body is %d runes, want <= %d", len([]rune(got)), paneLimit+64)
 	}
 }
-
