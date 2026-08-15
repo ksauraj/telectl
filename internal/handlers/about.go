@@ -7,7 +7,6 @@ import (
 
 	"github.com/ksauraj/telectl/internal/tg"
 	"github.com/ksauraj/telectl/internal/types"
-	"github.com/ksauraj/telectl/internal/utils/formatters"
 )
 
 type AboutHandler struct {
@@ -24,15 +23,9 @@ func (h *AboutHandler) Handle(ctx context.Context, msg *tg.Message, args []strin
 		version = "unknown"
 	}
 
-	// Build info - these are set at build time via ldflags
-	buildVersion := "dev"
-	buildCommit := "unknown"
-	buildDate := "unknown"
-
-	// Get from config if available
-	if cfg := h.getConfig(); cfg != nil {
-		// Version info would come from the bot's build metadata
-	}
+	buildVersion := h.bot.BuildVersion()
+	buildCommit := h.bot.BuildCommit()
+	buildDate := h.bot.BuildDate()
 
 	info := fmt.Sprintf(`<b>telectl</b> — Kubernetes cluster management from Telegram
 
@@ -67,9 +60,10 @@ Use /help for command reference, or tap the menu buttons to explore.`,
 		h.getConfig().Impersonation.Enabled,
 	)
 
-	h.bot.SendRich(msg.Chat.ID,
-		formatters.RichAbout(info),
-		info)
+	// About is plain HTML, not a Rich Message: sending it through SendRich
+	// wraps the string in a rich Paragraph, which renders the <b>/<a> tags
+	// literally instead of formatting them. SendHTML keeps the markup.
+	h.bot.SendHTML(msg.Chat.ID, info)
 
 	return nil
 }

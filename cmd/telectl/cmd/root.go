@@ -184,7 +184,7 @@ func runBot(ctx context.Context, cmd *cobra.Command) error {
 		zap.Int("allowed_users", len(cfg.Telegram.AllowedUserIDs)),
 	)
 
-	b, err := bot.New(cfg, logger)
+	b, err := bot.New(cfg, logger, buildVersion, buildCommit, buildDate)
 	if err != nil {
 		return fmt.Errorf("failed to create bot: %w", err)
 	}

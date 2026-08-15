@@ -38,6 +38,10 @@ type BotInterface interface {
 	ShowMonitor(ctx context.Context, chatID int64, session *UserSession)
 	ShowOperations(ctx context.Context, chatID int64, session *UserSession)
 	ShowSettings(ctx context.Context, chatID int64, session *UserSession)
+	// Build info
+	BuildVersion() string
+	BuildCommit() string
+	BuildDate() string
 }
 
 // CommandHandler interface.
@@ -208,6 +212,36 @@ func (s *UserSession) SetMenuState(state *MenuState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.MenuState = state
+}
+
+// GetState retrieves a value from the session's state map.
+func (s *UserSession) GetState(key string) (interface{}, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.State == nil {
+		return nil, false
+	}
+	v, ok := s.State[key]
+	return v, ok
+}
+
+// SetState stores a value in the session's state map.
+func (s *UserSession) SetState(key string, value interface{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.State == nil {
+		s.State = make(map[string]interface{})
+	}
+	s.State[key] = value
+}
+
+// DeleteState removes a value from the session's state map.
+func (s *UserSession) DeleteState(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.State != nil {
+		delete(s.State, key)
+	}
 }
 
 func Int64Ptr(i int64) *int64 {
