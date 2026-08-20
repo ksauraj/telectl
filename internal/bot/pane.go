@@ -123,15 +123,16 @@ func truncateForPaneTail(s string) string {
 	// (which lives at the head, far from this tail); an unclosed block renders
 	// as plain text instead of a code block.
 	if lang, ok := openingFence(s); ok {
-		if strings.HasPrefix(cut, "```") {
+		switch {
+		case strings.HasPrefix(cut, "```"):
 			// Opening fence survived: ensure a closing fence balances it.
 			if strings.Count(cut, "```")%2 != 0 {
 				cut = strings.TrimRight(cut, "\n") + "\n```\n"
 			}
-		} else if !strings.Contains(cut, "```") {
+		case !strings.Contains(cut, "```"):
 			// Neither fence survived: re-open with the block's language.
 			cut = "```" + lang + "\n" + cut + "\n```\n"
-		} else {
+		default:
 			// Only the closing fence survived (odd fence count): put the
 			// opening back so the kept tail is a balanced, self-contained
 			// code block and the dangling closing fence is not left orphaned.
@@ -247,21 +248,6 @@ func detailReqFor(chatID int64, messageID int, kind, ns, name string, session *t
 }
 
 // showHelpPane renders the command reference into the pane.
-//
-// Sent as plain HTML rather than rich markup: the reference is dense with the
-// characters Markdown treats as control (*, _, [, `), and it already carries its
-// own <b> markup. Escaping it into rich text would either mangle it or require a
-// second copy that could drift from the typed /help.
-func (b *Bot) showHelpPane(ctx context.Context, chatID int64, messageID int) {
-	kb := b.menuBuilder.GetSectionResultKeyboard(menus.SectionMain)
-	text := truncateForPane(formatters.HelpText)
-	if messageID == 0 {
-		b.SendKeyboard(chatID, text, &kb)
-		return
-	}
-	b.editView(ctx, chatID, messageID, text, &kb)
-}
-
 // showSectionPane renders output belonging to a top-level section (Monitoring,
 // Operations, Settings) with a keyboard back to that section.
 //

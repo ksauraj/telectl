@@ -1,0 +1,60 @@
+name: Dependency Updates
+
+on:
+  schedule:
+    # Run every Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.23'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  deps:
+    name: Update Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Update Go modules
+        run: |
+          go get -u ./...
+          go mod tidy
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet go.mod go.sum; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create PR
+        if: steps.changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: deps/update-go-modules
+          delete-branch: true
+          title: "deps: update Go modules"
+          body: |
+            Automated dependency update.
+
+            This PR updates all Go modules to their latest compatible versions
+            and runs `go mod tidy` to clean up the module files.
+
+            Run `go test ./...` and `golangci-lint run` locally before merging.
+          labels: dependencies, automated
+          commit-message: "deps: update Go modules"

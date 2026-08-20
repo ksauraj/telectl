@@ -204,7 +204,8 @@ func (b *Bot) detailDecodedSecret(ctx context.Context, r detailReq) {
 		return
 	}
 
-	var lines []string
+	// Pre-allocate: at least one header line + one per key (max len(dataMap))
+	lines := make([]string, 0, len(dataMap)+1)
 	lines = append(lines, "<b>Decoded Secret: "+formatters.EscapeHTML(r.ns)+"/"+formatters.EscapeHTML(r.name)+"</b>\n")
 
 	for key, val := range dataMap {

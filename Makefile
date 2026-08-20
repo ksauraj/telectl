@@ -112,6 +112,7 @@ check: fmt vet lint test ## Run all checks (mirrors CI)
 
 ci: check ## CI pipeline
 
+# Release: tag and push to trigger release workflow
 release: ## Create release (tags current commit)
 	@git tag -a v$(VERSION) -m "Release v$(VERSION)"
 	@git push origin v$(VERSION)
