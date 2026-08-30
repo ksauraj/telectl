@@ -724,7 +724,18 @@ func (b *Bot) showFollowLogs(ctx context.Context, r detailReq) {
 	if err != nil {
 		b.reportPaneError(ctx, r, "read logs", err)
 		cancel()
+		r.session.DeleteState(stateKey)
 		return
+	}
+
+	// Truncate before rendering: 200 lines of logs comfortably overrun
+	// Telegram's message limit, and an over-long body makes the edit fail with
+	// MESSAGE_TOO_LONG and the follow silently freeze. Keep the tail (newest
+	// lines) and repair the code fence, exactly like the one-shot log view.
+	if len(logs) > paneLimit {
+		logs = truncateForPaneTail(formatters.RichLogs(r.ns+"/"+r.name, r.container, logs))
+	} else {
+		logs = formatters.RichLogs(r.ns+"/"+r.name, r.container, logs)
 	}
 
 	// Build Stop button keyboard.
@@ -742,11 +753,17 @@ func (b *Bot) showFollowLogs(ctx context.Context, r detailReq) {
 	if r.container != "" {
 		label += " · " + r.container
 	}
-	rich := formatters.RichLogs(label, r.container, logs) +
-		"\n\n> Live follow active — updates every 5s for 5 min. Tap Stop to end."
+	rich := logs + "\n\n> Live follow active — updates every 5s for 5 min. Tap Stop to end."
+	fallback := "Live follow: " + formatters.EscapeHTML(label)
 
-	// Edit the current pane in place with logs + Stop button.
-	b.editView(ctx, r.chatID, r.messageID, rich, &kb)
+	// Render through the pane so it is truncated and has a way out. The Stop
+	// keyboard replaces the normal verb keyboard for the duration of a follow.
+	b.showPane(ctx, r.chatID, r.messageID, pane{
+		rich:     rich,
+		fallback: fallback,
+		kb:       &kb,
+		keepTail: true,
+	})
 
 	// Start the background updater.
 	go b.runFollowLogsUpdater(followCtx, r, stateKey)
@@ -772,7 +789,8 @@ func (b *Bot) runFollowLogsUpdater(ctx context.Context, r detailReq, stateKey st
 				// Time's up — show final message in pane and clean up.
 				finalRich := formatters.RichLogs(r.ns+"/"+r.name, r.container, "") +
 					"\n\n> Live follow ended (5 min limit reached)."
-				b.editView(ctx, r.chatID, r.messageID, finalRich, nil)
+				b.showPane(ctx, r.chatID, r.messageID, b.verbPane(r, finalRich,
+					"Follow ended: "+formatters.EscapeHTML(r.ns+"/"+r.name)))
 				r.session.DeleteState(stateKey)
 				return
 			}
@@ -795,11 +813,31 @@ func (b *Bot) runFollowLogsUpdater(ctx context.Context, r detailReq, stateKey st
 			if r.container != "" {
 				label += " · " + r.container
 			}
-			rich := formatters.RichLogs(label, r.container, logs) +
-				"\n\n> Live follow active — updates every 5s for 5 min. Tap Stop to end."
+			// Truncate to fit the pane; keep the newest lines.
+			rich := formatters.RichLogs(label, r.container, logs)
+			if len(rich) > paneLimit {
+				rich = truncateForPaneTail(rich)
+			}
+			rich += "\n\n> Live follow active — updates every 5s for 5 min. Tap Stop to end."
 
-			// Edit the pane message.
-			b.editView(ctx, r.chatID, r.messageID, rich, nil)
+			// Edit the pane message, reusing the Stop keyboard from the follow
+			// so the user can still cancel.
+			stopData := "menu:action:logsfollowstop:pods:" + r.ns + ":" + r.name
+			if r.container != "" {
+				stopData += ":" + r.container
+			}
+			stopKB := tg.InlineKeyboard(
+				tg.InlineKeyboardRow(
+					tg.InlineButtonData("⏹ Stop", stopData),
+				),
+			)
+			fallback := "Live follow: " + formatters.EscapeHTML(label)
+			b.showPane(ctx, r.chatID, r.messageID, pane{
+				rich:     rich,
+				fallback: fallback,
+				kb:       &stopKB,
+				keepTail: true,
+			})
 		}
 	}
 }
@@ -815,8 +853,22 @@ func (b *Bot) showFollowLogsStop(ctx context.Context, r detailReq) {
 	}
 	r.session.DeleteState(stateKey)
 
-	// The background goroutine will clean up the message on context cancellation.
-	// The edit in the updater will show the "ended" message.
+	// Leave the pane in the normal post-follow state: the current log tail with
+	// the standard verb keyboard, so the user is not stranded on a Stop button
+	// that no longer does anything.
+	opts := k8s.PodLogOptions{
+		Namespace: r.ns,
+		PodName:   r.name,
+		Container: r.container,
+		TailLines: types.Int64Ptr(200),
+	}
+	logs, err := b.fetchLogs(ctx, opts, r.session)
+	if err != nil {
+		b.reportPaneError(ctx, r, "read logs", err)
+		return
+	}
+	b.showLogResult(ctx, r, formatters.RichLogs(r.ns+"/"+r.name, r.container, logs),
+		"Logs for "+formatters.EscapeHTML(r.ns+"/"+r.name))
 }
 
 func (b *Bot) showPreviousLogs(ctx context.Context, r detailReq) {
