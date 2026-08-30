@@ -915,6 +915,13 @@ func (b *Bot) dispatchHelpCallback(
 func (b *Bot) showHelpSection(ctx context.Context, chatID int64, messageID int, title, body string) {
 	kb := b.menuBuilder.GetHelpInlineKeyboard()
 	text := fmt.Sprintf("<b>%s</b>\n\n%s", formatters.EscapeHTML(title), body)
+	// The body is HTML that has already outgrown Telegram's limit before (the
+	// full command reference plus a category header exceeded it and Telegram
+	// rejected the edit with MESSAGE_TOO_LONG, leaving the button looking dead).
+	// Truncate like every other pane body so the edit always lands.
+	if len(text) > paneLimit {
+		text = truncateForPane(text)
+	}
 	b.editView(ctx, chatID, messageID, text, &kb)
 }
 
