@@ -843,8 +843,8 @@ func (b *Bot) dispatchHelpCallback(
 		b.showHelpSection(ctx, chatID, messageID, "Resources",
 			`<b>Resource Commands</b>
 
-/get <type> [name] [-n ns] [-o wide] - List or get a resource
-/describe <type> <name> [-n ns] - Detailed view
+/get &lt;type&gt; [name] [-n ns] [-o wide] - List or get a resource
+/describe &lt;type&gt; &lt;name&gt; [-n ns] - Detailed view
 
 <b>Types:</b> pods, deployments, services, replicasets, namespaces, nodes, configmaps, secrets, pvcs, pvs, ingresses, events`)
 
@@ -852,19 +852,19 @@ func (b *Bot) dispatchHelpCallback(
 		b.showHelpSection(ctx, chatID, messageID, "Workloads",
 			`<b>Workload Commands</b>
 
-/restart <deployment> [-n ns] - Rollout restart
-/scale <deployment> <replicas> [-n ns] - Scale
+/restart &lt;deployment&gt; [-n ns] - Rollout restart
+/scale &lt;deployment&gt; &lt;replicas&gt; [-n ns] - Scale
 /top pods [-n ns] - Resource usage
-/watch <type> [-n ns] - Watch for changes
+/watch &lt;type&gt; [-n ns] - Watch for changes
 /events [-n ns] - Cluster events`)
 
 	case "networking":
 		b.showHelpSection(ctx, chatID, messageID, "Networking",
 			`<b>Networking Commands</b>
 
-/portforward <pod> <local:remote> [-n ns] - Port forward
-/exec <pod> [-c container] -n ns -- <cmd> - Execute in pod
-/logs <pod> [-c container] [-n ns] [-f] [--tail N] - Pod logs`)
+/portforward &lt;pod&gt; &lt;local:remote&gt; [-n ns] - Port forward
+/exec &lt;pod&gt; [-c container] -n ns -- &lt;cmd&gt; - Execute in pod
+/logs &lt;pod&gt; [-c container] [-n ns] [-f] [--tail N] - Pod logs`)
 
 	case "storage":
 		b.showHelpSection(ctx, chatID, messageID, "Storage",
@@ -882,23 +882,23 @@ func (b *Bot) dispatchHelpCallback(
 /top pods [-n ns] - Pod CPU/memory
 /top nodes - Node CPU/memory
 /events [-n ns] - Recent events
-/watch <type> [-n ns] - Watch resource changes`)
+/watch &lt;type&gt; [-n ns] - Watch resource changes`)
 
 	case "operations":
 		b.showHelpSection(ctx, chatID, messageID, "Operations",
 			`<b>Operations Commands</b>
 
-/restart <deployment> [-n ns] - Rollout restart
-/scale <deployment> <replicas> [-n ns] - Scale replicas
-/edit <type> <name> [-n ns] - Edit live YAML
-/delete <type> <name> [-n ns] - Delete resource`)
+/restart &lt;deployment&gt; [-n ns] - Rollout restart
+/scale &lt;deployment&gt; &lt;replicas&gt; [-n ns] - Scale replicas
+/edit &lt;type&gt; &lt;name&gt; [-n ns] - Edit live YAML
+/delete &lt;type&gt; &lt;name&gt; [-n ns] - Delete resource`)
 
 	case "settings":
 		b.showHelpSection(ctx, chatID, messageID, "Settings",
 			`<b>Settings Commands</b>
 
 /contexts - List kubeconfig contexts
-/use-context <name> - Switch context
+/use-context &lt;name&gt; - Switch context
 /config - Show current configuration
 /settings - Open settings panel`)
 
@@ -1107,11 +1107,11 @@ func (b *Bot) handleReplyKeyboard(ctx context.Context, msg *botmodels.Message, s
 		return true
 	case menus.LabelLogs, cmdLogs:
 		b.SendMessage(msg.Chat.ID,
-			"Usage: <code>/logs <pod> [-c container] [-n namespace] [-f] [--tail N]</code>")
+			"Usage: <code>/logs &lt;pod&gt; [-c container] [-n namespace] [-f] [--tail N]</code>")
 		return true
 	case menus.LabelExec, "exec":
 		b.SendMessage(msg.Chat.ID,
-			"Usage: <code>/exec <pod> [-c container] -n <namespace> -- <command></code>")
+			"Usage: <code>/exec &lt;pod&gt; [-c container] -n &lt;namespace&gt; -- &lt;command&gt;</code>")
 		return true
 	case menus.LabelContexts, "contexts":
 		b.runCommand(ctx, "contexts", nil, msg.Chat.ID, session)
@@ -1205,7 +1205,7 @@ func (b *Bot) ShowMainMenu(ctx context.Context, chatID int64, session *types.Use
 func (b *Bot) ShowResourceTypes(ctx context.Context, chatID int64, session *types.UserSession) {
 	session.SetMenuState(&types.MenuState{CurrentView: "resource_types"})
 	kb := b.menuBuilder.GetResourceTypeInlineKeyboard()
-	text := "<b>Resources</b>\n\nBrowse pods, deployments, services, and more.\nPick a resource type below, or type /get <resource> directly."
+	text := "<b>Resources</b>\n\nBrowse pods, deployments, services, and more.\nPick a resource type below, or type /get &lt;resource&gt; directly."
 	if _, err := b.tgBot.SendText(ctx, chatID, text, "HTML", &kb); err != nil {
 		b.logger.Error("Failed to send resource types", zap.Error(err), zap.Int64("chat_id", chatID))
 	}
