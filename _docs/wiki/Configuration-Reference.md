@@ -1,3 +1,8 @@
+---
+title: Configuration Reference (legacy path)
+permalink: /docs/wiki/Configuration-Reference/
+nav_exclude: true
+---
 # Configuration Reference
 
 Every configuration key telectl understands, where the config file lives,

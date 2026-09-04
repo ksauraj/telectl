@@ -1,39 +1,56 @@
-# telectl documentation site — just-the-docs theme (dark)
+# telectl documentation site - Stygian theme (docs engine)
+# Renderer: https://github.com/ksauraj/stygian (just-the-docs style)
 title: telectl
 description: >-
-  Telegram bot for Kubernetes cluster management — direct API, per-user RBAC
-  via impersonation.
+  Telegram bot for Kubernetes cluster management with direct API access,
+  per-user RBAC via impersonation, logs, exec and node operations from chat.
 
-# just-the-docs is a modern, searchable docs theme that works on GitHub Pages
-# via the jekyll-remote-theme plugin (bundled with the github-pages gem).
-remote_theme: just-the-docs/just-the-docs
+remote_theme: ksauraj/stygian
 
-# Dark default. We start from the built-in "dark" scheme (which remote-theme
-# reliably generates) and push it to true black via _sass/custom/custom.scss
-# (the just-the-docs extension file, always included).
-color_scheme: dark
-
-# Site-wide navigation (replaces the auto-generated list under "Navigation").
-nav_sort: case_insensitive
-
-# --- just-the-docs optional tweaks -------------------------------------------
-# Enable copy buttons on code blocks and a wider content area.
-aux_links:
-  "telectl on GitHub":
-    - "https://github.com/ksauraj/telectl"
-  "Releases":
-    - "https://github.com/ksauraj/telectl/releases"
-  "GHCR":
-    - "https://github.com/ksauraj/telectl/pkgs/container/telectl"
-
-# Show the "Last modified" date on pages.
-last_edit_timestamp: true
-last_edit_time_format: "%b %e %Y at %I:%M %p"
-
-# Use HTML5 details/summary for collapsible layers in diagrams where needed.
-enable_copy_code_button: true
-
-# Mermaid is rendered by GitHub Pages natively inside fenced ```mermaid```
-# blocks — no plugin required.
+# ------------------------------------------------------------------ build
 markdown: kramdown
 highlighter: rouge
+kramdown:
+  input: GFM
+  auto_ids: true
+  hard_wrap: false
+  syntax_highlighter: rouge
+  syntax_highlighter_opts:
+    block:
+      line_numbers: false
+
+exclude:
+  - README.md
+  - vendor
+
+# ------------------------------------------------------------------ content
+# Every page under _docs/ becomes a sidebar entry. Permalink /:path/ keeps
+# the original flat URLs (/Quick-Start/, /Installation-Guide/, ...).
+collections:
+  docs:
+    output: true
+    permalink: /:path/
+
+defaults:
+  - scope:
+      path: ""
+      type: docs
+    values:
+      layout: docs
+
+# no plugins needed: GitHub Pages injects jekyll-remote-theme automatically
+# for `remote_theme`. For local development, build with an extra config file
+# that sets `theme: stygian` against a path-installed gem.
+
+# ------------------------------------------------------------------ theme
+stygian:
+  header:
+    aux_links:
+      - { label: GitHub, href: https://github.com/ksauraj/telectl }
+      - { label: Releases, href: https://github.com/ksauraj/telectl/releases }
+      - { label: GHCR, href: https://github.com/ksauraj/telectl/pkgs/container/telectl }
+  theme:
+    default: dark
+  footer:
+    note: telectl docs
+    right: "© 2026 ksauraj"
