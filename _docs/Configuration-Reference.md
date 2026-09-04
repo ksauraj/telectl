@@ -1,3 +1,7 @@
+---
+title: Configuration Reference
+nav_order: 900
+---
 # Configuration Reference
 
 Every configuration key telectl understands, where the config file lives,
@@ -47,6 +51,7 @@ CLI flags outrank config file and environment (see
 [CLI flags](#cli-flags) below).
 
 ---
+nav_order: 900
 
 ## `telegram`
 
