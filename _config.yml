@@ -51,6 +51,11 @@ stygian:
       - { label: GHCR, href: https://github.com/ksauraj/telectl/pkgs/container/telectl }
   theme:
     default: dark
+  edit:
+    enabled: true
+    repo: https://github.com/ksauraj/telectl
+    branch: gh-pages
+    view: tree
   footer:
     note: telectl docs
     right: "© 2026 ksauraj"
