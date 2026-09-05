@@ -45,12 +45,18 @@ defaults:
 # ------------------------------------------------------------------ theme
 stygian:
   header:
+    aux_links_new_tab: true
     aux_links:
       - { label: GitHub, href: https://github.com/ksauraj/telectl }
       - { label: Releases, href: https://github.com/ksauraj/telectl/releases }
       - { label: GHCR, href: https://github.com/ksauraj/telectl/pkgs/container/telectl }
   theme:
     default: dark
+  edit:
+    enabled: true
+    repo: https://github.com/ksauraj/telectl
+    branch: gh-pages
+    view: tree
   footer:
     note: telectl docs
     right: "© 2026 ksauraj"
