@@ -45,6 +45,7 @@ defaults:
 # ------------------------------------------------------------------ theme
 stygian:
   header:
+    aux_links_new_tab: true
     aux_links:
       - { label: GitHub, href: https://github.com/ksauraj/telectl }
       - { label: Releases, href: https://github.com/ksauraj/telectl/releases }
