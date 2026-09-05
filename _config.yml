@@ -1,6 +1,8 @@
 # telectl documentation site - Stygian theme (docs engine)
 # Renderer: https://github.com/ksauraj/stygian (just-the-docs style)
 title: telectl
+url: "https://ksauraj.github.io"
+baseurl: "/telectl"
 description: >-
   Telegram bot for Kubernetes cluster management with direct API access,
   per-user RBAC via impersonation, logs, exec and node operations from chat.
