@@ -54,6 +54,8 @@ stygian:
       - { label: GHCR, href: https://github.com/ksauraj/telectl/pkgs/container/telectl }
   theme:
     default: dark
+  syntax_highlighting:
+    enabled: true
   edit:
     enabled: true
     repo: https://github.com/ksauraj/telectl
