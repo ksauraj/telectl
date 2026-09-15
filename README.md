@@ -432,3 +432,30 @@ Apache License 2.0 — see [LICENSE](LICENSE).
 ## Author
 
 Sauraj Kumar Singh ([@ksauraj](https://github.com/ksauraj))
+
+## Live demo
+
+Watch telectl drive a real kind cluster end to end in three minutes: browse resources, read logs, scale a deployment, watch events, inspect configuration - a Telegram bot operating Kubernetes with per-user RBAC.
+
+[**Play the demo video**](docs/assets/telectl-demo.mp4)
+
+### Capabilities (mobile)
+
+Every pane, shown on a phone-sized chat:
+
+![Main menu](docs/assets/mobile/01-main-menu.png)
+![Namespace picker](docs/assets/mobile/02-namespace-picker.png)
+![Resource types](docs/assets/mobile/03-resource-types.png)
+![Pod list](docs/assets/mobile/04-pod-list.png)
+![Pod detail](docs/assets/mobile/05-pod-detail.png)
+![Pod logs](docs/assets/mobile/06-pod-logs.png)
+![Deployments](docs/assets/mobile/07-deployments.png)
+![Scale chooser](docs/assets/mobile/08-scale-chooser.png)
+![Scale applied](docs/assets/mobile/09-scale-applied.png)
+![Events](docs/assets/mobile/10-events.png)
+![Nodes](docs/assets/mobile/11-nodes.png)
+![Help](docs/assets/mobile/12-help.png)
+![Configuration](docs/assets/mobile/13-config.png)
+
+> The bot handle shown in the configuration pane is redacted; place your own with the token
+> from `config.yaml`.
