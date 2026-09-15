@@ -50,6 +50,24 @@ the pod, not `sh` with the container set to `echo hi`.
 
 **Security** — user allowlist, per-user rate limiting, dry-run mode.
 
+
+## Live demo
+
+Watch telectl drive a real kind cluster end to end in three minutes: browse resources, read logs, scale a deployment, watch events, inspect configuration. A Telegram bot operating Kubernetes with per-user RBAC.
+
+[**Play the demo video**](docs/assets/telectl-demo.mp4)
+
+### Capabilities (mobile)
+
+<table>
+<tr><td><img width="210" src="docs/assets/mobile/01-main-menu.png"></td><td><img width="210" src="docs/assets/mobile/02-namespace-picker.png"></td><td><img width="210" src="docs/assets/mobile/03-resource-types.png"></td></tr>
+<tr><td><img width="210" src="docs/assets/mobile/04-pod-list.png"></td><td><img width="210" src="docs/assets/mobile/05-pod-detail.png"></td><td><img width="210" src="docs/assets/mobile/06-pod-logs.png"></td></tr>
+<tr><td><img width="210" src="docs/assets/mobile/07-deployments.png"></td><td><img width="210" src="docs/assets/mobile/08-scale-chooser.png"></td><td><img width="210" src="docs/assets/mobile/09-scale-applied.png"></td></tr>
+<tr><td><img width="210" src="docs/assets/mobile/10-events.png"></td><td><img width="210" src="docs/assets/mobile/11-nodes.png"></td><td><img width="210" src="docs/assets/mobile/12-help.png"></td></tr>
+<tr><td><img width="210" src="docs/assets/mobile/13-config.png"></td></tr>
+</table>
+
+The bot handle shown in the configuration pane is redacted.
 ## Quick start
 
 ### Prerequisites
